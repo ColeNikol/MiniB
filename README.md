@@ -1,2 +1,2 @@
-# Mini-B
-Mini-B is a lightweight minimalistic static blog CMS
+# MiniB
+MiniB is a lightweight minimalistic static blog CMS
