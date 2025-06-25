@@ -1,7 +1,7 @@
 <?php
 // Start session and define constants
 session_start();
-define('POSTS_DIR', 'posts');
+define('POSTS_DIR', '.');
 define('METADATA_FILE', 'metadata.json');
 
 // Create directories if they don't exist
@@ -37,14 +37,12 @@ function saveBase64Image($base64Data, $postSlug, $filename) {
         return false;
     }
     
-    // Create post images directory (same as thumbnails)
-    $imagesDir = POSTS_DIR . '/' . $postSlug . '/images';
-    if (!is_dir($imagesDir)) {
-        mkdir($imagesDir, 0777, true);
+    // Save image file directly in the post folder
+    $postDir = POSTS_DIR . '/' . $postSlug;
+    if (!is_dir($postDir)) {
+        mkdir($postDir, 0777, true);
     }
-    
-    // Save image file in images directory
-    $filePath = $imagesDir . '/' . $filename;
+    $filePath = $postDir . '/' . $filename;
     if (file_put_contents($filePath, $imageData)) {
         return $filePath;
     }
@@ -54,14 +52,12 @@ function saveBase64Image($base64Data, $postSlug, $filename) {
 
 // Function to save uploaded image as file
 function saveUploadedImage($uploadedFile, $postSlug, $filename) {
-    // Create post images directory (same as thumbnails)
-    $imagesDir = POSTS_DIR . '/' . $postSlug . '/images';
-    if (!is_dir($imagesDir)) {
-        mkdir($imagesDir, 0777, true);
+    // Save image file directly in the post folder
+    $postDir = POSTS_DIR . '/' . $postSlug;
+    if (!is_dir($postDir)) {
+        mkdir($postDir, 0777, true);
     }
-    
-    // Save image file
-    $filePath = $imagesDir . '/' . $filename;
+    $filePath = $postDir . '/' . $filename;
     if (move_uploaded_file($uploadedFile['tmp_name'], $filePath)) {
         return $filePath;
     }
@@ -75,16 +71,16 @@ function processContentImages($content, $postSlug) {
     $imageCounter = 1;
     
     // Process base64 images
-    if (preg_match_all('/<img[^>]+src="data:image\/[^"]+"/', $content, $matches)) {
+    if (preg_match_all('/<img[^>]+src="data:image\/[^\"]+"/', $content, $matches)) {
         foreach ($matches[0] as $match) {
-            if (preg_match('/src="(data:image\/[^"]+)"/', $match, $srcMatch)) {
+            if (preg_match('/src="(data:image\/[^\"]+)"/', $match, $srcMatch)) {
                 $base64Data = $srcMatch[1];
                 $filename = 'image_' . $imageCounter . '.png';
                 $savedPath = saveBase64Image($base64Data, $postSlug, $filename);
                 
                 if ($savedPath) {
-                    // Replace base64 data with relative file path (images/filename)
-                    $relativePath = 'images/' . $filename;
+                    // Replace base64 data with just the filename
+                    $relativePath = $filename;
                     $processed_content = str_replace($base64Data, $relativePath, $processed_content);
                     $imageCounter++;
                 }
@@ -93,16 +89,16 @@ function processContentImages($content, $postSlug) {
     }
     
     // Process uploaded images (if any are embedded in content)
-    if (preg_match_all('/<img[^>]+src="uploaded:\/\/[^"]+"/', $content, $matches)) {
+    if (preg_match_all('/<img[^>]+src="uploaded:\/\/[^\"]+"/', $content, $matches)) {
         foreach ($matches[0] as $match) {
-            if (preg_match('/src="uploaded:\/\/([^"]+)"/', $match, $srcMatch)) {
+            if (preg_match('/src="uploaded:\/\/([^\"]+)"/', $match, $srcMatch)) {
                 $uploadedPath = $srcMatch[1];
                 $filename = 'uploaded_' . $imageCounter . '.jpg';
                 $savedPath = saveUploadedImage(['tmp_name' => $uploadedPath], $postSlug, $filename);
                 
                 if ($savedPath) {
-                    // Replace uploaded path with relative file path (images/filename)
-                    $relativePath = 'images/' . $filename;
+                    // Replace uploaded path with just the filename
+                    $relativePath = $filename;
                     $processed_content = str_replace('uploaded://' . $uploadedPath, $relativePath, $processed_content);
                     $imageCounter++;
                 }
@@ -226,20 +222,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $post_dir = POSTS_DIR . '/' . $slug;
             if (!is_dir($post_dir)) mkdir($post_dir, 0777, true);
             
-            // Create images directory for this post
-            $images_dir = $post_dir . '/images';
-            if (!is_dir($images_dir)) mkdir($images_dir, 0777, true);
-            
             // Handle thumbnail upload
             $thumbnail_path = '';
             if ($thumbnail && $thumbnail['error'] === UPLOAD_ERR_OK) {
                 $ext = pathinfo($thumbnail['name'], PATHINFO_EXTENSION);
                 $thumbnail_filename = 'thumbnail.' . $ext;
-                $thumbnail_path = $images_dir . '/' . $thumbnail_filename;
+                $thumbnail_path = $post_dir . '/' . $thumbnail_filename;
                 move_uploaded_file($thumbnail['tmp_name'], $thumbnail_path);
             } elseif (!empty($selected_thumbnail)) {
-                // Use selected image as thumbnail
-                $thumbnail_path = $selected_thumbnail;
+                // Use selected image as thumbnail - ensure it's in the correct path
+                if (strpos($selected_thumbnail, $slug . '/') === 0) {
+                    $thumbnail_path = $selected_thumbnail;
+                } else {
+                    $thumbnail_path = $slug . '/' . $selected_thumbnail;
+                }
             }
             
             // Process content to save images as files and fix paths
@@ -399,14 +395,15 @@ $is_admin = isset($_SESSION['admin']);
 
 // Function to get uploaded images for a post
 function getPostImages($slug) {
-    $images_dir = POSTS_DIR . '/' . $slug . '/images';
+    $images_dir = POSTS_DIR . '/' . $slug;
     $images = [];
     
     if (is_dir($images_dir)) {
+        // Get images from the main slug directory only
         $files = glob($images_dir . '/*');
         foreach ($files as $file) {
             if (is_file($file) && in_array(strtolower(pathinfo($file, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
-                $images[] = $file;
+                $images[] = basename($file);
             }
         }
     }
@@ -550,7 +547,7 @@ function getPostImages($slug) {
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
-                    <a href="#" class="text-xl font-bold text-blue-600 flex items-center">
+                    <a href="./" class="logo text-xl font-bold text-blue-600 flex items-center">
                         <i class="fas fa-blog mr-2"></i> MiniB
                     </a>
                 </div>
@@ -589,7 +586,7 @@ function getPostImages($slug) {
             <h1 class="text-4xl md:text-5xl font-bold mb-4">Welcome to MiniB</h1>
             <p class="text-xl mb-8 max-w-3xl mx-auto">SEO friendly minimalistic static blog CMS with advanced features</p>
             <div class="flex justify-center space-x-4">
-                <a href="#posts" class="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition">Explore Posts</a>
+                <a href="#posts" class="explore-posts bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition">Explore Posts</a>
             </div>
         </div>
     </header>
@@ -709,7 +706,14 @@ function getPostImages($slug) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach($metadata as $post): ?>
+                                <?php 
+                                // Ensure unique posts by slug to prevent duplicates
+                                $unique_posts = [];
+                                foreach($metadata as $post) {
+                                    $unique_posts[$post['slug']] = $post;
+                                }
+                                foreach($unique_posts as $post): 
+                                ?>
                                     <tr>
                                         <td class="py-3 px-4 border-b"><?= $post['title'] ?></td>
                                         <td class="py-3 px-4 border-b">
@@ -742,14 +746,33 @@ function getPostImages($slug) {
     </section>
     <?php endif; ?>
 
+    <!-- Post Viewer Section (moved above) -->
+    <section id="postViewer" class="py-12 bg-gray-50 hidden">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="border-b p-6 flex justify-between items-center">
+                    <h2 class="text-2xl font-bold text-gray-800" id="viewerTitle">Post Title</h2>
+                    <button id="closeViewer" class="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6 lg:p-8">
+                    <div id="postViewerContent" class="post-content">
+                        <!-- Post content will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Featured Posts Carousel -->
-    <section id="carousel" class="py-8 bg-gray-100">
+    <section id="carousel" class="featured-block py-8 bg-gray-100">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Featured Posts</h2>
+            <h2 class="featured-heading text-2xl font-bold text-gray-800 mb-6">Featured Posts</h2>
             <div id="postCarousel" class="flex overflow-x-auto pb-4 scrollbar-hide" style="scrollbar-width: none;">
                 <?php foreach($recent_posts as $post): ?>
                     <div class="carousel-item flex-shrink-0 w-full md:w-1/2 lg:w-1/3 px-4">
-                        <div class="h-full cursor-pointer transition-transform hover:scale-105" data-slug="<?= $post['slug'] ?>" data-post-title="<?= htmlspecialchars($post['title']) ?>">
+                        <div class="h-full cursor-pointer transition-transform hover:scale-105" data-slug="<?= $post['slug'] ?>" data-post-title="<?= htmlspecialchars($post['title']) ?>" data-tags="<?= strtolower(implode(' ', $post['tags'])) ?>">
                             <div class="relative">
                                 <?php if(!empty($post['thumbnail']) && file_exists($post['thumbnail'])): ?>
                                     <img src="<?= $post['thumbnail'] ?>" alt="<?= $post['title'] ?>" class="w-full h-48 object-cover rounded-t-xl">
@@ -765,7 +788,7 @@ function getPostImages($slug) {
                             <div class="p-6 bg-white rounded-b-xl">
                                 <div class="flex flex-wrap gap-2 mb-3">
                                     <?php foreach($post['tags'] as $tag): ?>
-                                        <a href="#" class="tag bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full hover:bg-blue-100 hover:text-blue-800" onclick="event.stopPropagation(); filterByTag('<?= $tag ?>')"><?= $tag ?></a>
+                                        <a href="#" class="tag bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full hover:bg-blue-100 hover:text-blue-800" onclick="event.preventDefault(); event.stopPropagation(); filterByTag('<?= $tag ?>')"><?= $tag ?></a>
                                     <?php endforeach; ?>
                                 </div>
                                 <h3 class="text-xl font-bold mb-2"><?= $post['title'] ?></h3>
@@ -796,9 +819,9 @@ function getPostImages($slug) {
     </section>
 
     <!-- Blog Posts Section -->
-    <section id="posts" class="py-12">
+    <section id="posts" class="latest-block py-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Latest Posts</h2>
+            <h2 class="latest-heading text-2xl font-bold text-gray-800 mb-6">Latest Posts</h2>
             <div id="postContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 <?php foreach($posts as $post): ?>
                     <div class="post-card bg-white rounded-xl shadow-lg overflow-hidden cursor-pointer transition-transform hover:scale-105" data-title="<?= strtolower($post['title']) ?>" data-tags="<?= strtolower(implode(' ', $post['tags'])) ?>" data-slug="<?= $post['slug'] ?>" data-post-title="<?= htmlspecialchars($post['title']) ?>">
@@ -818,7 +841,7 @@ function getPostImages($slug) {
                             <div class="p-6">
                                 <div class="flex flex-wrap gap-2 mb-3">
                                     <?php foreach($post['tags'] as $tag): ?>
-                                        <span class="tag bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full hover:bg-blue-100 hover:text-blue-800"><?= $tag ?></span>
+                                        <span class="tag bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full hover:bg-blue-100 hover:text-blue-800 cursor-pointer" onclick="event.preventDefault(); event.stopPropagation(); filterByTag('<?= $tag ?>')"><?= $tag ?></span>
                                     <?php endforeach; ?>
                                 </div>
                                 <h3 class="text-xl font-bold mb-2"><?= $post['title'] ?></h3>
@@ -840,25 +863,6 @@ function getPostImages($slug) {
             <div id="loader" class="text-center py-8 hidden">
                 <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto"></div>
                 <p class="mt-2 text-gray-600">Loading more posts...</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Post Viewer Section -->
-    <section id="postViewer" class="py-12 bg-gray-50 hidden">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div class="border-b p-6 flex justify-between items-center">
-                    <h2 class="text-2xl font-bold text-gray-800" id="viewerTitle">Post Title</h2>
-                    <button id="closeViewer" class="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                <div class="p-6 lg:p-8">
-                    <div id="postViewerContent" class="post-content">
-                        <!-- Post content will be loaded here -->
-                    </div>
-                </div>
             </div>
         </div>
     </section>
@@ -1120,8 +1124,8 @@ function getPostImages($slug) {
                 <div>
                     <h4 class="font-semibold mb-4">Navigation</h4>
                     <ul class="space-y-2">
-                        <li><a href="#" class="text-gray-400 hover:text-white">Home</a></li>
-                        <li><a href="#posts" class="text-gray-400 hover:text-white">All Posts</a></li>
+                        <li><a href="./" class="text-gray-400 hover:text-white">Home</a></li>
+                        <li><a href="./#posts" class="text-gray-400 hover:text-white">All Posts</a></li>
                         <?php if($is_admin): ?>
                         <li><a href="#dashboard" class="text-gray-400 hover:text-white">Admin Dashboard</a></li>
                         <?php endif; ?>
@@ -1146,8 +1150,8 @@ function getPostImages($slug) {
                     </div>
                 </div>
             </div>
-            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
-                <p>© <script type="text/javascript">var year = new Date();document.write(year.getFullYear());</script> MiniB by <a href="https://bit.ly/colenikol" target="_blank"><u>ColeNikol</u></a>. If you like MiniB please <a href="https://cwallet.com/t/JZWJW87H" target="_blank"><b><u>support</u></b></a> my next project</p>
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400 footer-copyright">
+                <p>© <script type="text/javascript">var year = new Date();document.write(year.getFullYear());</script> MiniB by <a href="https://bit.ly/colenikol" target="_blank"><u>ColeNikol</u></a>. If you like MiniB please <a href="https://cwallet.com/t/JZWJW87H" target="_blank"><u>support</u></a> my next project</p>
             </div>
         </div>
     </footer>
@@ -1156,6 +1160,10 @@ function getPostImages($slug) {
     <button id="backToTop" class="back-to-top">
         <i class="fas fa-arrow-up"></i>
     </button>
+
+    <!-- Add placeholders for carousel and posts -->
+    <div id="carousel-placeholder" style="display:none;"></div>
+    <div id="posts-placeholder" style="display:none;"></div>
 
     <script>
         // Initialize Quill editor
@@ -1246,6 +1254,26 @@ function getPostImages($slug) {
             backToTopBtn.addEventListener('click', () => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             });
+            
+            // Show/hide back to top button based on scroll position
+            function toggleBackToTop() {
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const windowHeight = window.innerHeight;
+                const documentHeight = document.documentElement.scrollHeight;
+                
+                // Show button if page is longer than screen AND user has scrolled down
+                if (documentHeight > windowHeight && scrollTop > 300) {
+                    backToTopBtn.classList.add('show');
+                } else {
+                    backToTopBtn.classList.remove('show');
+                }
+            }
+            
+            // Listen for scroll events
+            window.addEventListener('scroll', toggleBackToTop);
+            
+            // Check on page load
+            document.addEventListener('DOMContentLoaded', toggleBackToTop);
         }
         
         // Function to open post in inline viewer
@@ -1282,32 +1310,24 @@ function getPostImages($slug) {
             });
             
             // Load post content
-            fetch(`posts/${slug}/index.php`)
+            fetch(`${slug}/index.php`)
                 .then(response => response.text())
                 .then(content => {
                     // Remove PHP tags and comments for display
                     content = content.replace(/<\?php[\s\S]*?\?>\s*/g, '');
                     
-                    // Fix image paths in the content
-                    // Handle both relative paths and absolute paths
-                    let fixedContent = content;
-                    
-                    // Fix relative image paths (images/filename)
-                    fixedContent = fixedContent.replace(/src="images\//g, `src="posts/${slug}/images/`);
-                    
-                    // Fix absolute paths that might be stored incorrectly
-                    fixedContent = fixedContent.replace(new RegExp(`src="posts/${slug}/[^"]*"`, 'g'), function(match) {
-                        // If the path doesn't already point to the images directory, fix it
-                        if (!match.includes('/images/')) {
-                            const filename = match.match(/posts\/[^\/]+\/([^"]+)/);
-                            if (filename && filename[1]) {
-                                return `src="posts/${slug}/images/${filename[1]}"`;
-                            }
+                    // Fix image paths to include the slug directory
+                    // Images are stored directly in the slug folder, so just add the slug prefix
+                    content = content.replace(/src="([^"]*\.(jpg|jpeg|png|gif|webp))"/g, function(match, filename) {
+                        // If the path already includes the slug, don't modify it
+                        if (filename.startsWith(slug + '/')) {
+                            return match;
                         }
-                        return match;
+                        // If it's just a filename, add the slug prefix
+                        return `src="${slug}/${filename}"`;
                     });
                     
-                    document.getElementById('postViewerContent').innerHTML = fixedContent;
+                    document.getElementById('postViewerContent').innerHTML = content;
                 })
                 .catch(error => {
                     console.error('Error loading post:', error);
@@ -1376,35 +1396,28 @@ function getPostImages($slug) {
                         document.getElementById('postTags').value = '<?= implode(', ', $post['tags']) ?>';
                         
                         // Load post content via AJAX
-                        fetch(`posts/<?= $post['slug'] ?>/index.php`)
+                        fetch(`${slug}/index.php`)
                             .then(response => response.text())
                             .then(content => {
                                 // Remove PHP tags and comments for editor
                                 content = content.replace(/<\?php[\s\S]*?\?>\s*/g, '');
                                 
                                 // Fix image paths for editor display
-                                let fixedContent = content;
-                                
-                                // Fix relative image paths (images/filename) to absolute paths for editor
-                                fixedContent = fixedContent.replace(/src="images\//g, `src="posts/<?= $post['slug'] ?>/images/`);
-                                
-                                // Fix absolute paths that might be stored incorrectly
-                                fixedContent = fixedContent.replace(new RegExp(`src="posts/<?= $post['slug'] ?>/[^"]*"`, 'g'), function(match) {
-                                    // If the path doesn't already point to the images directory, fix it
-                                    if (!match.includes('/images/')) {
-                                        const filename = match.match(/posts\/[^\/]+\/([^"]+)/);
-                                        if (filename && filename[1]) {
-                                            return `src="posts/<?= $post['slug'] ?>/images/${filename[1]}"`;
-                                        }
+                                // Images are stored directly in the slug folder, so just add the slug prefix
+                                content = content.replace(/src="([^"]*\.(jpg|jpeg|png|gif|webp))"/g, function(match, filename) {
+                                    // If the path already includes the slug, don't modify it
+                                    if (filename.startsWith(slug + '/')) {
+                                        return match;
                                     }
-                                    return match;
+                                    // If it's just a filename, add the slug prefix
+                                    return `src="${slug}/${filename}"`;
                                 });
                                 
                                 if (quill) {
-                                    quill.root.innerHTML = fixedContent;
+                                    quill.root.innerHTML = content;
                                 } else {
                                     quill = initializeQuillEditor();
-                                    quill.root.innerHTML = fixedContent;
+                                    quill.root.innerHTML = content;
                                 }
                                 
                                 // Update post images display
@@ -1485,18 +1498,40 @@ function getPostImages($slug) {
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
             searchInput.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase();
+                const searchTerm = this.value.trim().toLowerCase();
                 const postCards = document.querySelectorAll('.post-card');
-                
+                const carouselCards = document.querySelectorAll('.carousel-item > div');
+                let isTag = false;
+                let tagPattern = null;
+                if (searchTerm.length > 0) {
+                    // If the search term matches a tag exactly, treat as tag search
+                    isTag = true;
+                    tagPattern = new RegExp('(^|\\s)' + searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)');
+                }
+                let anyVisible = false;
                 postCards.forEach(card => {
-                    const title = card.getAttribute('data-title') || '';
-                    const tags = card.getAttribute('data-tags') || '';
-                    
-                    if (title.includes(searchTerm) || tags.includes(searchTerm)) {
-                        card.style.display = 'block';
-                    } else {
-                        card.style.display = 'none';
+                    const title = (card.getAttribute('data-title') || '').toLowerCase();
+                    const tags = (card.getAttribute('data-tags') || '').toLowerCase();
+                    let show = false;
+                    if (searchTerm === '') {
+                        show = true;
+                    } else if (isTag && tagPattern && tagPattern.test(tags)) {
+                        show = true;
+                    } else if (title.includes(searchTerm)) {
+                        show = true;
                     }
+                    card.style.display = show ? 'block' : 'none';
+                    if (show) anyVisible = true;
+                });
+                carouselCards.forEach(card => {
+                    const tags = (card.getAttribute('data-tags') || '').toLowerCase();
+                    let show = false;
+                    if (searchTerm === '') {
+                        show = true;
+                    } else if (isTag && tagPattern && tagPattern.test(tags)) {
+                        show = true;
+                    }
+                    card.parentElement.style.display = show ? '' : 'none'; // Hide the .carousel-item
                 });
                 // Scroll to posts section
                 const postsSection = document.getElementById('posts');
@@ -1545,65 +1580,99 @@ function getPostImages($slug) {
         const loader = document.getElementById('loader');
         const postContainer = document.getElementById('postContainer');
         
-        // Get total posts count from PHP
-        const totalPosts = <?= count($metadata) ?>;
-        
-        // Function to load more posts
-        function loadMorePosts() {
-            if (isLoading) return;
+        // Initialize infinite scroll for the main posts section
+        if (postContainer) {
+            // Get all posts from PHP metadata
+            const allPosts = <?= json_encode($metadata) ?>;
+            const totalPosts = allPosts.length;
             
-            // Show loader
-            loader.classList.remove('hidden');
-            isLoading = true;
+            // Start from where PHP-rendered posts end (first 6 posts are already shown)
+            const initialPostsShown = 6;
+            let currentIndex = initialPostsShown;
             
-            // Calculate how many posts we have left to load
-            const loadedCount = page * postsPerPage;
-            const remainingPosts = totalPosts - loadedCount;
-            const postsToLoad = Math.min(postsPerPage, remainingPosts);
+            // Function to create post card HTML
+            function createPostCard(post) {
+                const excerpt = post.excerpt || 'This is a sample post about ' + post.title + '. Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
+                const tagsHtml = post.tags.map(tag => 
+                    `<span class="tag bg-gray-100 text-gray-800 text-xs px-3 py-1 rounded-full hover:bg-blue-100 hover:text-blue-800 cursor-pointer" onclick="event.preventDefault(); event.stopPropagation(); filterByTag('${tag}')">${tag}</span>`
+                ).join('');
+                
+                const thumbnailHtml = post.thumbnail && post.thumbnail !== '' ? 
+                    `<img src="${post.thumbnail}" alt="${post.title}" class="w-full h-48 object-cover">` :
+                    `<div class="bg-gray-200 border-2 border-dashed rounded-t-xl w-full h-48 flex items-center justify-center text-gray-400">
+                        <i class="fas fa-image fa-3x"></i>
+                    </div>`;
+                
+                return `
+                    <div class="post-card bg-white rounded-xl shadow-lg overflow-hidden cursor-pointer transition-transform hover:scale-105" data-title="${post.title.toLowerCase()}" data-tags="${post.tags.join(' ').toLowerCase()}" data-slug="${post.slug}" data-post-title="${post.title}">
+                        <div>
+                            <div class="relative">
+                                ${thumbnailHtml}
+                                <div class="absolute top-4 right-4 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded view-count">
+                                    ${post.views} views
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="flex flex-wrap gap-2 mb-3">
+                                    ${tagsHtml}
+                                </div>
+                                <h3 class="text-xl font-bold mb-2">${post.title}</h3>
+                                <p class="text-gray-700 text-sm mb-4">${excerpt}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
             
-            if (postsToLoad > 0) {
-                // Fetch next set of posts
-                fetch(`?page=${page}`)
-                    .then(response => response.text())
-                    .then(html => {
-                        // Create a temporary container
-                        const tempContainer = document.createElement('div');
-                        tempContainer.innerHTML = html;
-                        
-                        // Extract the posts
-                        const newPosts = tempContainer.querySelectorAll('.post-card');
-                        
-                        // Append new posts to the container
-                        newPosts.forEach(post => {
-                            postContainer.appendChild(post);
-                        });
-                        
-                        page++;
-                    })
-                    .catch(error => {
-                        console.error('Error loading posts:', error);
-                    })
-                    .finally(() => {
-                        // Hide loader
-                        loader.classList.add('hidden');
-                        isLoading = false;
+            // Function to load more posts
+            function loadMorePosts() {
+                if (isLoading) return;
+                
+                // Show loader
+                if (loader) loader.classList.remove('hidden');
+                isLoading = true;
+                
+                // Calculate how many posts we have left to load
+                const remainingPosts = totalPosts - currentIndex;
+                const postsToLoad = Math.min(postsPerPage, remainingPosts);
+                
+                if (postsToLoad > 0) {
+                    // Get the next batch of posts starting from currentIndex
+                    const nextPosts = allPosts.slice(currentIndex, currentIndex + postsToLoad);
+                    
+                    // Create and append post cards
+                    nextPosts.forEach(post => {
+                        const postCardHtml = createPostCard(post);
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = postCardHtml;
+                        const postCard = tempDiv.firstElementChild;
+                        postContainer.appendChild(postCard);
                     });
-            } else {
-                // No more posts to load
-                loader.classList.add('hidden');
-                isLoading = false;
+                    
+                    currentIndex += postsToLoad;
+                    
+                    // Hide loader
+                    if (loader) loader.classList.add('hidden');
+                    isLoading = false;
+                } else {
+                    // No more posts to load
+                    if (loader) loader.classList.add('hidden');
+                    isLoading = false;
+                }
             }
-        }
-        
-        // Listen for scroll events
-        window.addEventListener('scroll', () => {
-            const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
             
-            // Check if we've reached the bottom of the page
-            if (scrollTop + clientHeight >= scrollHeight - 100) {
-                loadMorePosts();
-            }
-        });
+            // Listen for scroll events
+            window.addEventListener('scroll', () => {
+                if (isLoading) return;
+                
+                const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+                
+                // Check if we've reached the bottom of the page
+                if (scrollTop + clientHeight >= scrollHeight - 200) {
+                    loadMorePosts();
+                }
+            });
+        }
         
         // Add click handlers to all post cards (including carousel items)
         document.addEventListener('click', function(e) {
@@ -1622,6 +1691,203 @@ function getPostImages($slug) {
                 }
             }
         });
+        
+        // Add this JS after DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', function() {
+            const postViewer = document.getElementById('postViewer');
+            const carousel = document.getElementById('carousel');
+            const postsSection = document.getElementById('posts');
+            const carouselPlaceholder = document.getElementById('carousel-placeholder');
+            const postsPlaceholder = document.getElementById('posts-placeholder');
+            const closeViewer = document.getElementById('closeViewer');
+
+            function moveSectionsAfterViewer() {
+                postViewer.after(carousel);
+                carousel.after(postsSection);
+            }
+            function restoreSections() {
+                carouselPlaceholder.after(carousel);
+                postsPlaceholder.after(postsSection);
+            }
+
+            // Patch openPostInViewer
+            function getBasePath() {
+                // Get the current path up to the last '/'
+                let path = window.location.pathname;
+                if (!path.endsWith('/')) path = path.substring(0, path.lastIndexOf('/') + 1);
+                return path;
+            }
+            window.openPostInViewer = function(slug, title) {
+                document.getElementById('viewerTitle').textContent = title;
+                document.getElementById('postViewerContent').innerHTML = '<div class="text-center py-8"><div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto"></div><p class="mt-2 text-gray-600">Loading post...</p></div>';
+                postViewer.classList.remove('hidden');
+                moveSectionsAfterViewer();
+                if (closeViewer) closeViewer.classList.remove('hidden');
+                setTimeout(scrollToPostViewer, 200); // Wait for DOM update
+
+                // Update the URL to include the slug
+                if (window.history && window.history.pushState) {
+                    const basePath = getBasePath();
+                    window.history.pushState({slug: slug}, '', window.location.origin + basePath + slug);
+                }
+
+                // Fetch and display the post content
+                fetch(`${slug}/index.php`)
+                    .then(response => response.text())
+                    .then(content => {
+                        // Remove PHP tags and comments for display
+                        content = content.replace(/<\?php[\s\S]*?\?>\s*/g, '');
+                        
+                        // Fix image paths to include the slug directory
+                        // Images are stored directly in the slug folder, so just add the slug prefix
+                        content = content.replace(/src="([^"]*\.(jpg|jpeg|png|gif|webp))"/g, function(match, filename) {
+                            // If the path already includes the slug, don't modify it
+                            if (filename.startsWith(slug + '/')) {
+                                return match;
+                            }
+                            // If it's just a filename, add the slug prefix
+                            return `src="${slug}/${filename}"`;
+                        });
+                        
+                        document.getElementById('postViewerContent').innerHTML = content;
+                    })
+                    .catch(error => {
+                        console.error('Error loading post:', error);
+                        document.getElementById('postViewerContent').innerHTML = '<div class="text-center py-8 text-red-600">Error loading post content.</div>';
+                    });
+            };
+            if (closeViewer) {
+                closeViewer.addEventListener('click', function() {
+                    postViewer.classList.add('hidden');
+                    restoreSections();
+                    if (closeViewer) closeViewer.classList.add('hidden');
+                    // Scroll to main content to ensure footer is at the bottom
+                    const postsSection = document.getElementById('posts');
+                    if (postsSection) {
+                        postsSection.scrollIntoView({ behavior: 'auto', block: 'start' });
+                    } else {
+                        window.scrollTo({ top: 0, behavior: 'auto' });
+                    }
+                    if (window.history && window.history.pushState) {
+                        const basePath = getBasePath();
+                        window.history.pushState({}, '', window.location.origin + basePath);
+                    }
+                });
+            }
+        });
+
+        function scrollToPostViewer() {
+            const viewer = document.getElementById('postViewer');
+            if (viewer) {
+                viewer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // ... existing code ...
+            window.onpopstate = function(event) {
+                const path = window.location.pathname.replace(window.location.origin, '');
+                const slugMatch = path.match(/^\/([^\/]+)$/);
+                if (slugMatch && slugMatch[1]) {
+                    // If a slug is present, open the post
+                    const slug = slugMatch[1];
+                    // Find the post title from the card (fallback to slug if not found)
+                    let title = slug;
+                    const card = document.querySelector(`.post-card[data-slug='${slug}']`);
+                    if (card) {
+                        title = card.getAttribute('data-post-title') || slug;
+                    }
+                    window.openPostInViewer(slug, title);
+                } else {
+                    // Otherwise, close the post viewer
+                    const postViewer = document.getElementById('postViewer');
+                    if (postViewer) postViewer.classList.add('hidden');
+                    restoreSections();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            };
+            // On initial load, handle direct navigation to /slug
+            const initialPath = window.location.pathname;
+            const initialSlugMatch = initialPath.match(/^\/([^\/]+)$/);
+            if (initialSlugMatch && initialSlugMatch[1]) {
+                const slug = initialSlugMatch[1];
+                let title = slug;
+                const card = document.querySelector(`.post-card[data-slug='${slug}']`);
+                if (card) {
+                    title = card.getAttribute('data-post-title') || slug;
+                }
+                window.openPostInViewer(slug, title);
+            }
+        });
+
+        // Enhanced Quill editor with custom code blocks and image handling
+        function initializeQuillEditor() {
+            if (quill) {
+                return quill;
+            }
+            
+            // Custom image handler
+            function imageHandler() {
+                const input = document.createElement('input');
+                input.setAttribute('type', 'file');
+                input.setAttribute('accept', 'image/*');
+                input.click();
+                
+                input.onchange = () => {
+                    const file = input.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const range = quill.getSelection();
+                            if (range) {
+                                // Insert image and get its index
+                                quill.insertEmbed(range.index, 'image', reader.result);
+                            }
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+            }
+            
+            // Custom link handler
+            function linkHandler() {
+                const range = quill.getSelection();
+                if (range) {
+                    const text = quill.getText(range.index, range.length);
+                    const url = prompt('Enter URL:', 'https://');
+                    if (url) {
+                        if (range.length > 0) {
+                            quill.deleteText(range.index, range.length);
+                        }
+                        quill.insertText(range.index, text || url, 'link', url);
+                    }
+                }
+            }
+            
+            quill = new Quill('#editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: {
+                        container: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'color': [] }, { 'background': [] }],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            [{ 'align': [] }],
+                            ['link', 'image', 'video'],
+                            ['clean']
+                        ],
+                        handlers: {
+                            image: imageHandler,
+                            link: linkHandler
+                        }
+                    }
+                },
+                placeholder: 'Write your post content here...'
+            });
+            
+            return quill;
+        }
         
         // Code Insertion Modal
         const codeModal = document.getElementById('codeModal');
@@ -1658,26 +1924,17 @@ function getPostImages($slug) {
                     const content = quill.root.innerHTML;
                     const slug = document.getElementById('slugInput').value || 'your-post-slug';
                     
-                    // Process content similar to how it would be processed when saving
-                    let processedContent = content;
-                    
-                    // Fix image paths for display (convert absolute paths to relative)
-                    processedContent = processedContent.replace(/src="posts\/[^\/]+\/images\//g, 'src="images/');
-                    
                     // Generate the PHP code that would be created
                     const generatedCode = `<?php
 // Post: ${slug}
 // Generated: ${new Date().toISOString().slice(0, 19).replace('T', ' ')}
 ?>
 
-${processedContent}`;
+${content}`;
                     
-                    // Display the generated code with syntax highlighting
+                    // Display the generated code
                     const codeDisplay = document.getElementById('generatedCodeDisplay');
                     codeDisplay.textContent = generatedCode;
-                    
-                    // Add syntax highlighting classes
-                    codeDisplay.className = 'bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm font-mono border language-php';
                     
                     // Update preview content
                     document.getElementById('postPreview').innerHTML = content;
@@ -1774,304 +2031,77 @@ ${processedContent}`;
             });
         }
         
-        // Enhanced Quill editor with custom code blocks and image handling
-        function initializeQuillEditor() {
-            if (quill) {
-                return quill;
-            }
-            
-            // Custom image handler
-            function imageHandler() {
-                const input = document.createElement('input');
-                input.setAttribute('type', 'file');
-                input.setAttribute('accept', 'image/*');
-                input.click();
-                
-                input.onchange = () => {
-                    const file = input.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const range = quill.getSelection();
-                            if (range) {
-                                // Create image element with custom attributes
-                                const img = document.createElement('img');
-                                img.src = reader.result;
-                                img.style.maxWidth = '100%';
-                                img.style.height = 'auto';
-                                
-                                // Insert image and get its index
-                                quill.insertEmbed(range.index, 'image', reader.result);
-                                
-                                // Show image options modal
-                                showImageOptionsModal(range.index, img);
-                            }
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                };
-            }
-            
-            // Custom link handler
-            function linkHandler() {
-                const range = quill.getSelection();
-                if (range) {
-                    const text = quill.getText(range.index, range.length);
-                    showLinkOptionsModal(text, range);
-                }
-            }
-            
-            quill = new Quill('#editor', {
-                theme: 'snow',
-                modules: {
-                    toolbar: {
-                        container: [
-                            [{ 'header': [1, 2, 3, false] }],
-                            ['bold', 'italic', 'underline', 'strike'],
-                            [{ 'color': [] }, { 'background': [] }],
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                            [{ 'align': [] }],
-                            ['link', 'image', 'video'],
-                            ['clean']
-                        ],
-                        handlers: {
-                            image: imageHandler,
-                            link: linkHandler
-                        }
-                    }
-                },
-                placeholder: 'Write your post content here...'
-            });
-            
-            // Add image click handlers after editor is initialized
-            setTimeout(() => {
-                addImageClickHandlers();
-                addLinkClickHandlers();
-            }, 100);
-            
-            return quill;
+        // Generated Code Modal handlers
+        const generatedCodeModal = document.getElementById('generatedCodeModal');
+        const closeGeneratedCodeModal = document.getElementById('closeGeneratedCodeModal');
+        const closeGeneratedCode = document.getElementById('closeGeneratedCode');
+        const copyGeneratedCode = document.getElementById('copyGeneratedCode');
+        const codeTab = document.getElementById('codeTab');
+        const previewTab = document.getElementById('previewTab');
+        const codeTabContent = document.getElementById('codeTabContent');
+        const previewTabContent = document.getElementById('previewTabContent');
+        
+        function closeGeneratedCodeModalFunc() {
+            generatedCodeModal.classList.add('hidden');
         }
         
-        // Image options modal functionality
-        function showImageOptionsModal(imageIndex, imgElement) {
-            // Create modal HTML
-            const modalHTML = `
-                <div id="imageOptionsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
-                        <div class="border-b p-4 flex justify-between items-center">
-                            <h3 class="text-xl font-bold">Image Options</h3>
-                            <button id="closeImageModal" class="text-gray-500 hover:text-gray-700">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <div class="p-6">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-gray-700 mb-2">Alt Text</label>
-                                    <input type="text" id="imageAlt" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="Describe the image for accessibility">
-                                </div>
-                                <div>
-                                    <label class="block text-gray-700 mb-2">Description</label>
-                                    <input type="text" id="imageDesc" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="Optional image description">
-                                </div>
-                            </div>
-                            <div class="mt-6">
-                                <label class="block text-gray-700 mb-2">Alignment</label>
-                                <div class="flex space-x-4">
-                                    <button type="button" class="image-align-btn px-4 py-2 border rounded-lg hover:bg-gray-100" data-align="left">
-                                        <i class="fas fa-align-left mr-2"></i>Left
-                                    </button>
-                                    <button type="button" class="image-align-btn px-4 py-2 border rounded-lg hover:bg-gray-100" data-align="center">
-                                        <i class="fas fa-align-center mr-2"></i>Center
-                                    </button>
-                                    <button type="button" class="image-align-btn px-4 py-2 border rounded-lg hover:bg-gray-100" data-align="right">
-                                        <i class="fas fa-align-right mr-2"></i>Right
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="mt-6">
-                                <label class="block text-gray-700 mb-2">Size</label>
-                                <div class="flex items-center space-x-4">
-                                    <input type="range" id="imageSize" min="25" max="100" value="100" class="flex-1">
-                                    <span id="sizeValue" class="text-sm text-gray-600 w-12">100%</span>
-                                </div>
-                            </div>
-                            <div class="mt-6 flex justify-end space-x-3">
-                                <button type="button" id="cancelImageOptions" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
-                                    Cancel
-                                </button>
-                                <button type="button" id="applyImageOptions" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                                    Apply
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Add modal to page
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-            
-            const modal = document.getElementById('imageOptionsModal');
-            const closeBtn = document.getElementById('closeImageModal');
-            const cancelBtn = document.getElementById('cancelImageOptions');
-            const applyBtn = document.getElementById('applyImageOptions');
-            const sizeSlider = document.getElementById('imageSize');
-            const sizeValue = document.getElementById('sizeValue');
-            const alignBtns = document.querySelectorAll('.image-align-btn');
-            const altInput = document.getElementById('imageAlt');
-            const descInput = document.getElementById('imageDesc');
-            
-            let selectedAlignment = 'left';
-            let selectedSize = 100;
-            
-            // Pre-fill existing values if editing
-            if (imgElement) {
-                altInput.value = imgElement.alt || '';
-                descInput.value = imgElement.getAttribute('data-description') || '';
+        if (closeGeneratedCodeModal) {
+            closeGeneratedCodeModal.addEventListener('click', closeGeneratedCodeModalFunc);
+        }
+        
+        if (closeGeneratedCode) {
+            closeGeneratedCode.addEventListener('click', closeGeneratedCodeModalFunc);
+        }
+        
+        if (copyGeneratedCode) {
+            copyGeneratedCode.addEventListener('click', () => {
+                const codeDisplay = document.getElementById('generatedCodeDisplay');
+                const textArea = document.createElement('textarea');
+                textArea.value = codeDisplay.textContent;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
                 
-                // Detect current alignment
-                if (imgElement.style.float === 'right') {
-                    selectedAlignment = 'right';
-                    alignBtns[2].classList.add('bg-blue-100', 'border-blue-500');
-                } else if (imgElement.style.margin === '0 auto' || imgElement.style.textAlign === 'center') {
-                    selectedAlignment = 'center';
-                    alignBtns[1].classList.add('bg-blue-100', 'border-blue-500');
-                } else {
-                    selectedAlignment = 'left';
-                    alignBtns[0].classList.add('bg-blue-100', 'border-blue-500');
-                }
+                // Show feedback
+                const originalText = copyGeneratedCode.innerHTML;
+                copyGeneratedCode.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+                copyGeneratedCode.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                copyGeneratedCode.classList.add('bg-green-600');
                 
-                // Detect current size
-                const currentSize = parseInt(imgElement.style.maxWidth) || 100;
-                selectedSize = currentSize;
-                sizeSlider.value = currentSize;
-                sizeValue.textContent = currentSize + '%';
-            }
-            
-            // Size slider handler
-            sizeSlider.addEventListener('input', function() {
-                selectedSize = this.value;
-                sizeValue.textContent = selectedSize + '%';
-            });
-            
-            // Alignment button handlers
-            alignBtns.forEach(btn => {
-                btn.addEventListener('click', function() {
-                    alignBtns.forEach(b => b.classList.remove('bg-blue-100', 'border-blue-500'));
-                    this.classList.add('bg-blue-100', 'border-blue-500');
-                    selectedAlignment = this.dataset.align;
-                });
-            });
-            
-            // Close modal handlers
-            function closeModal() {
-                modal.remove();
-            }
-            
-            closeBtn.addEventListener('click', closeModal);
-            cancelBtn.addEventListener('click', closeModal);
-            
-            // Apply options handler
-            applyBtn.addEventListener('click', function() {
-                const altText = altInput.value;
-                const description = descInput.value;
-                
-                if (imgElement) {
-                    // Update existing image
-                    imgElement.alt = altText;
-                    imgElement.style.maxWidth = selectedSize + '%';
-                    imgElement.style.height = 'auto';
-                    
-                    // Apply alignment
-                    imgElement.style.float = '';
-                    imgElement.style.display = '';
-                    imgElement.style.margin = '';
-                    
-                    if (selectedAlignment === 'center') {
-                        imgElement.style.display = 'block';
-                        imgElement.style.margin = '0 auto';
-                    } else if (selectedAlignment === 'right') {
-                        imgElement.style.float = 'right';
-                        imgElement.style.margin = '0 0 1rem 1rem';
-                    } else {
-                        imgElement.style.float = 'left';
-                        imgElement.style.margin = '0 1rem 1rem 0';
-                    }
-                    
-                    // Handle description
-                    let nextElement = imgElement.nextElementSibling;
-                    if (description) {
-                        imgElement.setAttribute('data-description', description);
-                        if (nextElement && nextElement.classList.contains('image-description')) {
-                            nextElement.textContent = description;
-                            nextElement.style.textAlign = selectedAlignment;
-                        } else {
-                            const descElement = document.createElement('p');
-                            descElement.className = 'image-description';
-                            descElement.textContent = description;
-                            descElement.style.textAlign = selectedAlignment;
-                            imgElement.parentNode.insertBefore(descElement, imgElement.nextSibling);
-                        }
-                    } else {
-                        imgElement.removeAttribute('data-description');
-                        if (nextElement && nextElement.classList.contains('image-description')) {
-                            nextElement.remove();
-                        }
-                    }
-                } else {
-                    // Handle new image insertion
-                    const delta = quill.getContents();
-                    const imageOp = delta.ops[imageIndex];
-                    
-                    if (imageOp && imageOp.insert && imageOp.insert.image) {
-                        // Create new image element with attributes
-                        const img = document.createElement('img');
-                        img.src = imageOp.insert.image;
-                        img.alt = altText;
-                        img.style.maxWidth = selectedSize + '%';
-                        img.style.height = 'auto';
-                        
-                        // Apply alignment
-                        if (selectedAlignment === 'center') {
-                            img.style.display = 'block';
-                            img.style.margin = '0 auto';
-                        } else if (selectedAlignment === 'right') {
-                            img.style.float = 'right';
-                            img.style.margin = '0 0 1rem 1rem';
-                        } else {
-                            img.style.float = 'left';
-                            img.style.margin = '0 1rem 1rem 0';
-                        }
-                        
-                        // Add description if provided
-                        let htmlContent = img.outerHTML;
-                        if (description) {
-                            htmlContent += `<p class="text-sm text-gray-600 mt-2 image-description" style="text-align: ${selectedAlignment};">${description}</p>`;
-                        }
-                        
-                        // Replace the image in Quill
-                        quill.deleteText(imageIndex, 1);
-                        quill.clipboard.dangerouslyPasteHTML(imageIndex, htmlContent);
-                    }
-                }
-                
-                closeModal();
+                setTimeout(() => {
+                    copyGeneratedCode.innerHTML = originalText;
+                    copyGeneratedCode.classList.remove('bg-green-600');
+                    copyGeneratedCode.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                }, 2000);
             });
         }
         
-        // Add click handler for existing images in editor
-        function addImageClickHandlers() {
-            if (quill) {
-                const editor = quill.root;
-                editor.addEventListener('click', function(e) {
-                    if (e.target.tagName === 'IMG') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        showImageOptionsModal(null, e.target);
-                    }
-                });
-            }
+        // Tab functionality
+        if (codeTab && previewTab) {
+            codeTab.addEventListener('click', () => {
+                codeTab.classList.add('border-b-2', 'border-blue-500', 'text-blue-600');
+                codeTab.classList.remove('text-gray-600');
+                previewTab.classList.remove('border-b-2', 'border-blue-500', 'text-blue-600');
+                previewTab.classList.add('text-gray-600');
+                codeTabContent.classList.remove('hidden');
+                previewTabContent.classList.add('hidden');
+            });
+            
+            previewTab.addEventListener('click', () => {
+                previewTab.classList.add('border-b-2', 'border-blue-500', 'text-blue-600');
+                previewTab.classList.remove('text-gray-600');
+                codeTab.classList.remove('border-b-2', 'border-blue-500', 'text-blue-600');
+                codeTab.classList.add('text-gray-600');
+                previewTabContent.classList.remove('hidden');
+                codeTabContent.classList.add('hidden');
+                
+                // Update preview content
+                if (quill) {
+                    const content = quill.root.innerHTML;
+                    document.getElementById('postPreview').innerHTML = content;
+                }
+            });
         }
         
         // Function to update post images display
@@ -2092,7 +2122,7 @@ ${processedContent}`;
                                 const imgDiv = document.createElement('div');
                                 imgDiv.className = 'relative group cursor-pointer';
                                 imgDiv.innerHTML = `
-                                    <img src="posts/${slug}/images/${image}" alt="${image}" class="w-full h-20 object-cover rounded border">
+                                    <img src="${slug}/${image}" alt="${image}" class="w-full h-20 object-cover rounded border">
                                     <div class="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
                                         <button type="button" class="text-white text-xs bg-blue-500 hover:bg-blue-600 px-2 py-1 rounded" onclick="event.stopPropagation(); selectAsThumbnail('${slug}', '${image}')" title="Use as thumbnail">
                                             <i class="fas fa-star"></i>
@@ -2150,7 +2180,7 @@ ${processedContent}`;
             const thumbnailPreview = document.getElementById('thumbnailPreview');
             if (thumbnailPreview) {
                 thumbnailPreview.innerHTML = '';
-                thumbnailPreview.style.backgroundImage = `url('posts/${slug}/images/${filename}')`;
+                thumbnailPreview.style.backgroundImage = `url('${slug}/${filename}')`;
                 thumbnailPreview.classList.add('thumbnail-preview');
                 
                 // Add a hidden input to store the selected thumbnail path
@@ -2162,7 +2192,7 @@ ${processedContent}`;
                     hiddenInput.id = 'selected_thumbnail';
                     document.querySelector('#editorModal form').appendChild(hiddenInput);
                 }
-                hiddenInput.value = `posts/${slug}/images/${filename}`;
+                hiddenInput.value = filename;
                 
                 // Show success message
                 const successMsg = document.createElement('div');
@@ -2191,440 +2221,6 @@ ${processedContent}`;
                 } else {
                     alert('Please save the post first to see images.');
                 }
-            });
-        }
-        
-        // Initialize image click handlers when editor is created
-        function initializeQuillEditor() {
-            if (quill) {
-                return quill;
-            }
-            
-            // Custom image handler
-            function imageHandler() {
-                const input = document.createElement('input');
-                input.setAttribute('type', 'file');
-                input.setAttribute('accept', 'image/*');
-                input.click();
-                
-                input.onchange = () => {
-                    const file = input.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const range = quill.getSelection();
-                            if (range) {
-                                // Create image element with custom attributes
-                                const img = document.createElement('img');
-                                img.src = reader.result;
-                                img.style.maxWidth = '100%';
-                                img.style.height = 'auto';
-                                
-                                // Insert image and get its index
-                                quill.insertEmbed(range.index, 'image', reader.result);
-                                
-                                // Show image options modal
-                                showImageOptionsModal(range.index, img);
-                            }
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                };
-            }
-            
-            // Custom link handler
-            function linkHandler() {
-                const range = quill.getSelection();
-                if (range) {
-                    const text = quill.getText(range.index, range.length);
-                    showLinkOptionsModal(text, range);
-                }
-            }
-            
-            quill = new Quill('#editor', {
-                theme: 'snow',
-                modules: {
-                    toolbar: {
-                        container: [
-                            [{ 'header': [1, 2, 3, false] }],
-                            ['bold', 'italic', 'underline', 'strike'],
-                            [{ 'color': [] }, { 'background': [] }],
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                            [{ 'align': [] }],
-                            ['link', 'image', 'video'],
-                            ['clean']
-                        ],
-                        handlers: {
-                            image: imageHandler,
-                            link: linkHandler
-                        }
-                    }
-                },
-                placeholder: 'Write your post content here...'
-            });
-            
-            // Add image click handlers after editor is initialized
-            setTimeout(() => {
-                addImageClickHandlers();
-                addLinkClickHandlers();
-            }, 100);
-            
-            return quill;
-        }
-        
-        // Link options modal functionality
-        function showLinkOptionsModal(selectedText, range, existingLink = null) {
-            // Create modal HTML
-            const modalHTML = `
-                <div id="linkOptionsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
-                        <div class="border-b p-4 flex justify-between items-center">
-                            <h3 class="text-xl font-bold">Link Options</h3>
-                            <button id="closeLinkModal" class="text-gray-500 hover:text-gray-700">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <div class="p-6">
-                            <div class="mb-4">
-                                <label class="block text-gray-700 mb-2">Link Text</label>
-                                <input type="text" id="linkText" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" value="${selectedText || ''}" placeholder="Link text">
-                            </div>
-                            <div class="mb-4">
-                                <label class="block text-gray-700 mb-2">URL</label>
-                                <input type="url" id="linkUrl" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="https://example.com">
-                            </div>
-                            <div class="mb-4">
-                                <label class="block text-gray-700 mb-2">Open Link</label>
-                                <div class="flex space-x-4">
-                                    <label class="flex items-center">
-                                        <input type="radio" name="linkTarget" value="_self" class="mr-2" checked>
-                                        <span>Same window</span>
-                                    </label>
-                                    <label class="flex items-center">
-                                        <input type="radio" name="linkTarget" value="_blank" class="mr-2">
-                                        <span>New tab</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="mb-4">
-                                <label class="block text-gray-700 mb-2">REL Attributes</label>
-                                <div class="space-y-2">
-                                    <label class="flex items-center">
-                                        <input type="checkbox" id="relNoopener" class="mr-2">
-                                        <span class="text-sm">noopener (security)</span>
-                                    </label>
-                                    <label class="flex items-center">
-                                        <input type="checkbox" id="relNoreferrer" class="mr-2">
-                                        <span class="text-sm">noreferrer (privacy)</span>
-                                    </label>
-                                    <label class="flex items-center">
-                                        <input type="checkbox" id="relNofollow" class="mr-2">
-                                        <span class="text-sm">nofollow (SEO)</span>
-                                    </label>
-                                    <label class="flex items-center">
-                                        <input type="checkbox" id="relSponsored" class="mr-2">
-                                        <span class="text-sm">sponsored (advertising)</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="flex justify-end space-x-3">
-                                <button type="button" id="cancelLinkOptions" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
-                                    Cancel
-                                </button>
-                                <button type="button" id="applyLinkOptions" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                                    Apply
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Add modal to page
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-            
-            const modal = document.getElementById('linkOptionsModal');
-            const closeBtn = document.getElementById('closeLinkModal');
-            const cancelBtn = document.getElementById('cancelLinkOptions');
-            const applyBtn = document.getElementById('applyLinkOptions');
-            const linkText = document.getElementById('linkText');
-            const linkUrl = document.getElementById('linkUrl');
-            
-            // Pre-fill existing values if editing
-            if (existingLink) {
-                linkText.value = existingLink.textContent || '';
-                linkUrl.value = existingLink.getAttribute('href') || '';
-                
-                const target = existingLink.getAttribute('target') || '_self';
-                document.querySelector(`input[name="linkTarget"][value="${target}"]`).checked = true;
-                
-                const rel = existingLink.getAttribute('rel') || '';
-                if (rel.includes('noopener')) document.getElementById('relNoopener').checked = true;
-                if (rel.includes('noreferrer')) document.getElementById('relNoreferrer').checked = true;
-                if (rel.includes('nofollow')) document.getElementById('relNofollow').checked = true;
-                if (rel.includes('sponsored')) document.getElementById('relSponsored').checked = true;
-            }
-            
-            // Close modal handlers
-            function closeModal() {
-                modal.remove();
-            }
-            
-            closeBtn.addEventListener('click', closeModal);
-            cancelBtn.addEventListener('click', closeModal);
-            
-            // Apply link options handler
-            applyBtn.addEventListener('click', function() {
-                const text = linkText.value.trim();
-                const url = linkUrl.value.trim();
-                const target = document.querySelector('input[name="linkTarget"]:checked').value;
-                
-                if (url) {
-                    // Build REL attributes
-                    const relAttributes = [];
-                    if (document.getElementById('relNoopener').checked) relAttributes.push('noopener');
-                    if (document.getElementById('relNoreferrer').checked) relAttributes.push('noreferrer');
-                    if (document.getElementById('relNofollow').checked) relAttributes.push('nofollow');
-                    if (document.getElementById('relSponsored').checked) relAttributes.push('sponsored');
-                    
-                    const rel = relAttributes.length > 0 ? relAttributes.join(' ') : '';
-                    
-                    // Create link HTML
-                    let linkHTML = `<a href="${url}"`;
-                    if (target === '_blank') linkHTML += ' target="_blank"';
-                    if (rel) linkHTML += ` rel="${rel}"`;
-                    linkHTML += `>${text || url}</a>`;
-                    
-                    if (existingLink) {
-                        // Update existing link
-                        existingLink.href = url;
-                        existingLink.textContent = text || url;
-                        existingLink.target = target === '_blank' ? '_blank' : '';
-                        existingLink.rel = rel;
-                    } else {
-                        // Insert new link
-                        if (range.length > 0) {
-                            quill.deleteText(range.index, range.length);
-                        }
-                        quill.clipboard.dangerouslyPasteHTML(range.index, linkHTML);
-                    }
-                }
-                
-                closeModal();
-            });
-        }
-        
-        // Add click handler for existing links in editor
-        function addLinkClickHandlers() {
-            if (quill) {
-                const editor = quill.root;
-                editor.addEventListener('click', function(e) {
-                    if (e.target.tagName === 'A') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        // Get the range of the link
-                        const range = quill.getSelection();
-                        if (range) {
-                            showLinkOptionsModal(e.target.textContent, range, e.target);
-                        }
-                    }
-                });
-            }
-        }
-        
-        // Generated Code Modal handlers
-        const generatedCodeModal = document.getElementById('generatedCodeModal');
-        const closeGeneratedCodeModal = document.getElementById('closeGeneratedCodeModal');
-        const closeGeneratedCode = document.getElementById('closeGeneratedCode');
-        const copyGeneratedCode = document.getElementById('copyGeneratedCode');
-        const codeTab = document.getElementById('codeTab');
-        const previewTab = document.getElementById('previewTab');
-        const codeTabContent = document.getElementById('codeTabContent');
-        const previewTabContent = document.getElementById('previewTabContent');
-        const editCode = document.getElementById('editCode');
-        const editableGeneratedCode = document.getElementById('editableGeneratedCode');
-        const generatedCodeDisplay = document.getElementById('generatedCodeDisplay');
-        const editControls = document.getElementById('editControls');
-        const cancelEdit = document.getElementById('cancelEdit');
-        const saveBtn = document.getElementById('save');
-
-        function closeGeneratedCodeModalFunc() {
-            generatedCodeModal.classList.add('hidden');
-        }
-
-        // Edit Code functionality
-        if (editCode) {
-            editCode.addEventListener('click', () => {
-                const codeDisplay = document.getElementById('generatedCodeDisplay');
-                const editableCode = document.getElementById('editableGeneratedCode');
-                
-                // Switch to edit mode
-                codeDisplay.classList.add('hidden');
-                editableCode.classList.remove('hidden');
-                editControls.classList.remove('hidden');
-                editCode.classList.add('hidden');
-                
-                // Populate the editable textarea with current code
-                editableCode.value = codeDisplay.textContent;
-                
-                // Focus on the textarea
-                editableCode.focus();
-            });
-        }
-
-        // Cancel Edit functionality
-        if (cancelEdit) {
-            cancelEdit.addEventListener('click', () => {
-                const codeDisplay = document.getElementById('generatedCodeDisplay');
-                const editableCode = document.getElementById('editableGeneratedCode');
-                
-                // Switch back to view mode
-                codeDisplay.classList.remove('hidden');
-                editableCode.classList.add('hidden');
-                editControls.classList.add('hidden');
-                editCode.classList.remove('hidden');
-            });
-        }
-
-        // Combined Save functionality for the new "Save" button
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => {
-                const editableCode = document.getElementById('editableGeneratedCode');
-                const codeDisplay = document.getElementById('generatedCodeDisplay');
-                const slug = document.getElementById('slugInput').value || document.getElementById('postSlug').value;
-                let editedCode = editableCode.value;
-
-                if (!slug) {
-                    alert('Please enter a slug for the post first.');
-                    return;
-                }
-
-                let codeForFile = editedCode;
-
-                // This regex, which is inside a JS string, is escaped for the PHP parser.
-                // It correctly checks for the presence of '<?php' at the start.
-                if (!editedCode.match(/^<\\?php/)) {
-                    // We build the PHP tag using string concatenation.
-                    // This is a standard way to prevent the PHP parser from misinterpreting the tag.
-                    codeForFile = '<' + `?php
-// Post: ${slug}
-// Generated: ${new Date().toISOString().slice(0, 19).replace('T', ' ')}
-?>
-
-${editedCode}`;
-                }
-
-                // Send the correctly formatted code to the server
-                fetch('save_edited_code.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ slug: slug, code: codeForFile })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // On success, update the editor with the new content
-                        let htmlContent = '';
-                        const phpMatch = codeForFile.match(/^<\\?php[\\s\\S]*?\\?>\\s*([\\s\\S]*)/);
-                        if (phpMatch && phpMatch[1]) {
-                            htmlContent = phpMatch[1].trim();
-                        } else {
-                            htmlContent = codeForFile.trim(); // Fallback for safety
-                        }
-
-                        if (quill) {
-                            quill.root.innerHTML = htmlContent;
-                        }
-
-                        // Update the display with the code that was actually saved
-                        codeDisplay.textContent = codeForFile;
-
-                        // Switch back to view mode
-                        codeDisplay.classList.remove('hidden');
-                        editableCode.classList.add('hidden');
-                        editControls.classList.add('hidden');
-                        editCode.classList.remove('hidden');
-
-                        // Show success feedback on the button
-                        const originalText = saveBtn.innerHTML;
-                        saveBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Saved!';
-                        saveBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                        saveBtn.classList.add('bg-blue-600');
-
-                        setTimeout(() => {
-                            saveBtn.innerHTML = originalText;
-                            saveBtn.classList.remove('bg-blue-600');
-                            saveBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-                        }, 2000);
-
-                    } else {
-                        alert('Error saving file: ' + data.error);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error saving file. Please try again.');
-                });
-            });
-        }
-
-        // Tab functionality
-        if (codeTab && previewTab) {
-            codeTab.addEventListener('click', () => {
-                codeTab.classList.add('border-b-2', 'border-blue-500', 'text-blue-600');
-                codeTab.classList.remove('text-gray-600');
-                previewTab.classList.remove('border-b-2', 'border-blue-500', 'text-blue-600');
-                previewTab.classList.add('text-gray-600');
-                codeTabContent.classList.remove('hidden');
-                previewTabContent.classList.add('hidden');
-            });
-            
-            previewTab.addEventListener('click', () => {
-                previewTab.classList.add('border-b-2', 'border-blue-500', 'text-blue-600');
-                previewTab.classList.remove('text-gray-600');
-                codeTab.classList.remove('border-b-2', 'border-blue-500', 'text-blue-600');
-                codeTab.classList.add('text-gray-600');
-                previewTabContent.classList.remove('hidden');
-                codeTabContent.classList.add('hidden');
-                
-                // Update preview content
-                if (quill) {
-                    const content = quill.root.innerHTML;
-                    document.getElementById('postPreview').innerHTML = content;
-                }
-            });
-        }
-        
-        if (closeGeneratedCodeModal) {
-            closeGeneratedCodeModal.addEventListener('click', closeGeneratedCodeModalFunc);
-        }
-        
-        if (closeGeneratedCode) {
-            closeGeneratedCode.addEventListener('click', closeGeneratedCodeModalFunc);
-        }
-        
-        if (copyGeneratedCode) {
-            copyGeneratedCode.addEventListener('click', () => {
-                const codeDisplay = document.getElementById('generatedCodeDisplay');
-                const textArea = document.createElement('textarea');
-                textArea.value = codeDisplay.textContent;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                
-                // Show feedback
-                const originalText = copyGeneratedCode.innerHTML;
-                copyGeneratedCode.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
-                copyGeneratedCode.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-                copyGeneratedCode.classList.add('bg-green-600');
-                
-                setTimeout(() => {
-                    copyGeneratedCode.innerHTML = originalText;
-                    copyGeneratedCode.classList.remove('bg-green-600');
-                    copyGeneratedCode.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                }, 2000);
             });
         }
     </script>
