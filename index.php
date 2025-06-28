@@ -1,6 +1,7 @@
 <?php
 // Start session and define constants
 session_start();
+require_once 'theme-config.php';
 define('POSTS_DIR', '.');
 define('METADATA_FILE', 'metadata.json');
 
@@ -11,6 +12,16 @@ if (!is_dir(POSTS_DIR)) mkdir(POSTS_DIR, 0777, true);
 $metadata = [];
 if (file_exists(METADATA_FILE)) {
     $metadata = json_decode(file_get_contents(METADATA_FILE), true) ?: [];
+}
+
+// Function to generate slug from title
+function generateSlug($title) {
+    $slug = strtolower($title);
+    $slug = preg_replace('/[^\w\s-]/', '', $slug); // Remove special characters except spaces and hyphens
+    $slug = preg_replace('/\s+/', '-', $slug); // Replace spaces with hyphens
+    $slug = preg_replace('/-+/', '-', $slug); // Replace multiple hyphens with single hyphen
+    $slug = trim($slug, '-'); // Remove leading/trailing hyphens
+    return substr($slug, 0, 50); // Limit to 50 characters
 }
 
 // Function to extract first paragraph from content
@@ -164,6 +175,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_SESSION['admin']);
     }
     
+    // Save theme customizations
+    if (isset($_POST['save_theme_customization'])) {
+        // Debug: Log that the form was submitted
+        error_log("Theme customization form submitted");
+        error_log("POST data: " . json_encode($_POST));
+        
+        // Debug: Log specific color values
+        error_log("Primary color picker: " . ($_POST['primary_color'] ?? 'NOT SET'));
+        error_log("Primary color text: " . ($_POST['primary_color_text'] ?? 'NOT SET'));
+        error_log("Secondary color picker: " . ($_POST['secondary_color'] ?? 'NOT SET'));
+        error_log("Secondary color text: " . ($_POST['secondary_color_text'] ?? 'NOT SET'));
+        error_log("Accent color picker: " . ($_POST['accent_color'] ?? 'NOT SET'));
+        error_log("Accent color text: " . ($_POST['accent_color_text'] ?? 'NOT SET'));
+        error_log("Text color picker: " . ($_POST['text_color'] ?? 'NOT SET'));
+        error_log("Text color text: " . ($_POST['text_color_text'] ?? 'NOT SET'));
+        
+        $theme_name = getCurrentTheme();
+        error_log("Current theme: " . $theme_name);
+        
+        $customizations = [
+            'site_name' => $_POST['site_name'] ?? '',
+            'site_title' => $_POST['site_title'] ?? '',
+            'site_description' => $_POST['site_description'] ?? '',
+            'primary_color' => !empty($_POST['primary_color_text']) ? $_POST['primary_color_text'] : ($_POST['primary_color'] ?? '#3B82F6'),
+            'secondary_color' => !empty($_POST['secondary_color_text']) ? $_POST['secondary_color_text'] : ($_POST['secondary_color'] ?? '#1F2937'),
+            'accent_color' => !empty($_POST['accent_color_text']) ? $_POST['accent_color_text'] : ($_POST['accent_color'] ?? '#10B981'),
+            'text_color' => !empty($_POST['text_color_text']) ? $_POST['text_color_text'] : ($_POST['text_color'] ?? '#374151'),
+            'background_color' => $_POST['background_color'] ?? '#FFFFFF',
+            'hero_title' => $_POST['hero_title'] ?? '',
+            'hero_subtitle' => $_POST['hero_subtitle'] ?? '',
+            'hero_button_text' => $_POST['hero_button_text'] ?? '',
+            'hero_button_url' => $_POST['hero_button_url'] ?? '',
+            'logo_url' => $_POST['logo_url'] ?? '',
+            'favicon_url' => $_POST['favicon_url'] ?? '',
+            'og_image_url' => $_POST['og_image_url'] ?? '',
+            'footer_text' => $_POST['footer_text'] ?? '',
+            'social_facebook' => $_POST['social_facebook'] ?? '',
+            'social_twitter' => $_POST['social_twitter'] ?? '',
+            'social_instagram' => $_POST['social_instagram'] ?? '',
+            'social_linkedin' => $_POST['social_linkedin'] ?? ''
+        ];
+        
+        // Debug: Log the customizations being saved
+        error_log("Saving theme customizations for theme: " . $theme_name);
+        error_log("Customizations: " . json_encode($customizations));
+        
+        // Save to file for persistence first
+        $theme_options_file = getThemePath($theme_name) . '/options.json';
+        error_log("Theme options file path: " . $theme_options_file);
+        
+        // Check if directory exists and is writable
+        $theme_dir = dirname($theme_options_file);
+        error_log("Theme directory: " . $theme_dir);
+        error_log("Directory exists: " . (is_dir($theme_dir) ? 'Yes' : 'No'));
+        error_log("Directory writable: " . (is_writable($theme_dir) ? 'Yes' : 'No'));
+        
+        $save_result = file_put_contents($theme_options_file, json_encode($customizations, JSON_PRETTY_PRINT));
+        
+        // Debug: Log the save result
+        error_log("Save result: " . ($save_result !== false ? "Success ($save_result bytes)" : "Failed"));
+        error_log("File path: " . $theme_options_file);
+        
+        if ($save_result !== false) {
+            // Clear session theme options to force reload from file
+            if (isset($_SESSION['theme_options'][$theme_name])) {
+                unset($_SESSION['theme_options'][$theme_name]);
+                error_log("Cleared session theme options for: " . $theme_name);
+            }
+            
+            // Save customizations to theme options in session
+            foreach ($customizations as $key => $value) {
+                setThemeOption($key, $value);
+                error_log("Set theme option: $key = $value");
+            }
+            
+            $success = "Theme customizations saved successfully!";
+            error_log("Theme customizations saved successfully");
+        } else {
+            $error = "Failed to save theme customizations. Please check file permissions.";
+            error_log("Failed to save theme customizations");
+        }
+    }
+    
     // Increment visit counter
     if (isset($_POST['increment_view'])) {
         $slug = $_POST['slug'] ?? '';
@@ -171,6 +265,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Get visitor IP for tracking
             $visitor_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
             $current_time = time();
+            
+            // Debug: Log view increment attempt
+            error_log("View increment attempt for slug: $slug, IP: $visitor_ip");
             
             // Create a simple tracking file to prevent multiple counts from same IP
             $tracking_file = POSTS_DIR . '/' . $slug . '/view_tracking.json';
@@ -180,26 +277,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tracking_data = json_decode(file_get_contents($tracking_file), true) ?: [];
             }
             
-            // Check if this IP has viewed this post in the last 24 hours
+            // Check if this IP has viewed this post in the last 5 minutes (for testing)
+            // Change this to 86400 for production (24 hours)
             $last_view_time = $tracking_data[$visitor_ip] ?? 0;
             $time_diff = $current_time - $last_view_time;
             
-            // Only count view if it's been more than 24 hours since last view from this IP
-            if ($time_diff > 86400) { // 24 hours = 86400 seconds
-                $metadata[$slug]['views'] = ($metadata[$slug]['views'] ?? 0) + 1;
+            // Debug: Log tracking info
+            error_log("Last view time: $last_view_time, Time diff: $time_diff seconds");
+            
+            // Only count view if it's been more than 5 minutes since last view from this IP (for testing)
+            // Change this to 86400 for production (24 hours)
+            if ($time_diff > 300) { // 5 minutes = 300 seconds (for testing)
+                $old_views = $metadata[$slug]['views'] ?? 0;
+                $metadata[$slug]['views'] = $old_views + 1;
                 file_put_contents(METADATA_FILE, json_encode($metadata, JSON_PRETTY_PRINT));
                 
                 // Update tracking data
                 $tracking_data[$visitor_ip] = $current_time;
                 file_put_contents($tracking_file, json_encode($tracking_data, JSON_PRETTY_PRINT));
                 
+                // Debug: Log successful increment
+                error_log("View count incremented for $slug: $old_views -> {$metadata[$slug]['views']}");
+                
                 echo json_encode(['success' => true, 'views' => $metadata[$slug]['views']]);
             } else {
+                // Debug: Log that view was already counted
+                error_log("View already counted for $slug (IP: $visitor_ip)");
+                
                 // Return current view count without incrementing
                 echo json_encode(['success' => true, 'views' => $metadata[$slug]['views'] ?? 0, 'already_counted' => true]);
             }
             exit;
         } else {
+            // Debug: Log invalid slug
+            error_log("Invalid slug for view increment: $slug");
             echo json_encode(['success' => false, 'error' => 'Invalid post slug']);
             exit;
         }
@@ -213,6 +324,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tags = array_slice(array_filter(array_map('trim', explode(',', $_POST['tags']))), 0, 3);
         $thumbnail = $_FILES['thumbnail'] ?? null;
         $selected_thumbnail = $_POST['selected_thumbnail'] ?? '';
+        
+        // Generate slug from title if empty
+        if (empty($slug) && !empty($title)) {
+            $slug = generateSlug($title);
+        }
         
         // Validate input
         if (empty($title) || empty($slug) || empty($content)) {
@@ -423,6 +539,13 @@ function getPostImages($slug) {
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/tailwind-dark.css">
+    
+    <?php 
+    // Apply theme customizations
+    $theme_options = applyThemeCustomizations();
+    outputThemeMetaTags();
+    ?>
+    
     <style>
         /* Code block styles */
         .code-block {
@@ -539,6 +662,25 @@ function getPostImages($slug) {
         .language-php .string { color: #10b981; }
         .language-php .variable { color: #3b82f6; }
         .language-php .function { color: #f59e0b; }
+        
+        /* Theme Manager Styles */
+        .color-picker {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .color-picker::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        .color-picker::-webkit-color-swatch {
+            border: none;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body class="bg-gray-50 font-sans">
@@ -548,7 +690,12 @@ function getPostImages($slug) {
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
                     <a href="./" class="logo text-xl font-bold text-blue-600 flex items-center">
-                        <i class="fas fa-blog mr-2"></i> MiniB
+                        <?php if (!empty($theme_options['logo_url'])): ?>
+                            <img src="<?= htmlspecialchars($theme_options['logo_url']) ?>" alt="Logo" class="h-8 w-auto mr-2">
+                        <?php else: ?>
+                            <i class="fas fa-blog mr-2"></i>
+                        <?php endif; ?>
+                        <?= htmlspecialchars($theme_options['site_name'] ?? 'MiniB') ?>
                     </a>
                 </div>
                 <div class="flex items-center">
@@ -562,7 +709,7 @@ function getPostImages($slug) {
                         <i class="fas fa-moon moon-icon" style="display: none;"></i>
                     </button>
                     <?php if($is_admin): ?>
-                        <button id="newPostBtn" class="bg-green-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-600 transition mr-2">
+                        <button id="newPostBtnNav" class="bg-green-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-600 transition mr-2">
                             <i class="fas fa-plus mr-2"></i>New Post
                         </button>
                         <form method="post">
@@ -581,12 +728,12 @@ function getPostImages($slug) {
     </nav>
 
     <!-- Hero Section -->
-    <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-16">
+    <header class="hero-section bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-16">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h1 class="text-4xl md:text-5xl font-bold mb-4">Welcome to MiniB</h1>
-            <p class="text-xl mb-8 max-w-3xl mx-auto">SEO friendly minimalistic static blog CMS with advanced features</p>
+            <h1 class="text-4xl md:text-5xl font-bold mb-4"><?= htmlspecialchars($theme_options['hero_title'] ?? 'Welcome to MiniB') ?></h1>
+            <p class="text-xl mb-8 max-w-3xl mx-auto"><?= htmlspecialchars($theme_options['hero_subtitle'] ?? 'SEO friendly minimalistic static blog CMS with advanced features') ?></p>
             <div class="flex justify-center space-x-4">
-                <a href="#posts" class="explore-posts bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition">Explore Posts</a>
+                <a href="<?= htmlspecialchars($theme_options['hero_button_url'] ?? '#posts') ?>" class="explore-posts bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition"><?= htmlspecialchars($theme_options['hero_button_text'] ?? 'Explore Posts') ?></a>
             </div>
         </div>
     </header>
@@ -680,6 +827,14 @@ function getPostImages($slug) {
                 <div class="p-6">
                     <div class="flex justify-between items-center mb-6">
                         <h3 class="text-xl font-bold text-gray-800">Manage Posts</h3>
+                        <div class="flex space-x-3">
+                            <button id="newPostBtnDashboard" class="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition">
+                                <i class="fas fa-plus mr-2"></i>New Post
+                            </button>
+                            <button onclick="openThemeModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition">
+                                <i class="fas fa-palette mr-2"></i>Theme Manager
+                            </button>
+                        </div>
                     </div>
                     
                     <?php if(isset($error)): ?>
@@ -797,7 +952,7 @@ function getPostImages($slug) {
                                 if (file_exists(POSTS_DIR . '/' . $post['slug'] . '/index.php')) {
                                     $post_content = file_get_contents(POSTS_DIR . '/' . $post['slug'] . '/index.php');
                                     // Remove PHP tags and comments for excerpt
-                                    $post_content = preg_replace('/<\?php.*?\?>\s*/s', '', $post_content);
+                                    $post_content = preg_replace('/<\?php[\s\S]*?\?>\s*/s', '', $post_content);
                                 }
                                 $excerpt = getFirstParagraph($post_content);
                                 ?>
@@ -850,7 +1005,7 @@ function getPostImages($slug) {
                                 if (file_exists(POSTS_DIR . '/' . $post['slug'] . '/index.php')) {
                                     $post_content = file_get_contents(POSTS_DIR . '/' . $post['slug'] . '/index.php');
                                     // Remove PHP tags and comments for excerpt
-                                    $post_content = preg_replace('/<\?php.*?\?>\s*/s', '', $post_content);
+                                    $post_content = preg_replace('/<\?php[\s\S]*?\?>\s*/s', '', $post_content);
                                 }
                                 $excerpt = getFirstParagraph($post_content);
                                 ?>
@@ -912,7 +1067,7 @@ function getPostImages($slug) {
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-2">Slug (URL)</label>
-                        <input type="text" id="slugInput" name="slug" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" required>
+                        <input type="text" id="slugInput" name="slug" placeholder="Auto-generated from title" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" required>
                     </div>
                 </div>
                 
@@ -965,36 +1120,14 @@ function getPostImages($slug) {
                 
                 <!-- Enhanced Content Editor with Code Insertion -->
                 <div class="mb-6">
-                    <div class="flex justify-between items-center mb-2">
-                        <label class="block text-gray-700">Content</label>
-                        <div class="flex space-x-2">
-                            <button type="button" id="insertHtml" class="bg-green-100 hover:bg-green-200 px-3 py-1 rounded text-green-700 text-sm">
-                                <i class="fas fa-code mr-1"></i>HTML
-                            </button>
-                            <button type="button" id="insertJs" class="bg-yellow-100 hover:bg-yellow-200 px-3 py-1 rounded text-yellow-700 text-sm">
-                                <i class="fab fa-js-square mr-1"></i>JavaScript
-                            </button>
-                            <button type="button" id="insertCss" class="bg-purple-100 hover:bg-purple-200 px-3 py-1 rounded text-purple-700 text-sm">
-                                <i class="fab fa-css3-alt mr-1"></i>CSS
-                            </button>
-                            <button type="button" id="insertPhp" class="bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded text-blue-700 text-sm">
-                                <i class="fab fa-php mr-1"></i>PHP
-                            </button>
-                            <button type="button" id="insertEmbed" class="bg-red-100 hover:bg-red-200 px-3 py-1 rounded text-red-700 text-sm">
-                                <i class="fas fa-link mr-1"></i>Embed
-                            </button>
-                            <button type="button" id="showGeneratedCode" class="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded text-gray-700 text-sm">
-                                <i class="fas fa-eye mr-1"></i>Show Generated Code
-                            </button>
-                        </div>
-                    </div>
+                    <label class="block text-gray-700 mb-2">Content</label>
                     <div id="editor"></div>
                     <textarea id="postContent" name="content" style="display: none;"></textarea>
                 </div>
                 
                 <div class="flex justify-end">
                     <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700">
-                        Publish Post
+                        <i class="fas fa-save mr-2"></i>Save Post
                     </button>
                 </div>
             </form>
@@ -1118,8 +1251,8 @@ function getPostImages($slug) {
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div>
-                    <h3 class="text-xl font-bold mb-4">MiniB</h3>
-                    <p class="text-gray-400">Minimalistic static blog CMS</p>
+                    <h3 class="text-xl font-bold mb-4"><?= htmlspecialchars($theme_options['site_name'] ?? 'MiniB') ?></h3>
+                    <p class="text-gray-400"><?= htmlspecialchars($theme_options['site_description'] ?? 'Minimalistic static blog CMS') ?></p>
                 </div>
                 <div>
                     <h4 class="font-semibold mb-4">Navigation</h4>
@@ -1132,11 +1265,20 @@ function getPostImages($slug) {
                     </ul>
                 </div>
                 <div>
-                    <h4 class="font-semibold mb-4">Resources</h4>
+                    <h4 class="font-semibold mb-4">Social</h4>
                     <ul class="space-y-2">
-                        <li><a href="#" class="text-gray-400 hover:text-white">Documentation</a></li>
-                        <li><a href="#" class="text-gray-400 hover:text-white">GitHub Repository</a></li>
-                        <li><a href="#" class="text-gray-400 hover:text-white">Support</a></li>
+                        <?php if (!empty($theme_options['social_facebook'])): ?>
+                            <li><a href="<?= htmlspecialchars($theme_options['social_facebook']) ?>" target="_blank" class="text-gray-400 hover:text-white"><i class="fab fa-facebook mr-2"></i>Facebook</a></li>
+                        <?php endif; ?>
+                        <?php if (!empty($theme_options['social_twitter'])): ?>
+                            <li><a href="<?= htmlspecialchars($theme_options['social_twitter']) ?>" target="_blank" class="text-gray-400 hover:text-white"><i class="fab fa-twitter mr-2"></i>Twitter</a></li>
+                        <?php endif; ?>
+                        <?php if (!empty($theme_options['social_instagram'])): ?>
+                            <li><a href="<?= htmlspecialchars($theme_options['social_instagram']) ?>" target="_blank" class="text-gray-400 hover:text-white"><i class="fab fa-instagram mr-2"></i>Instagram</a></li>
+                        <?php endif; ?>
+                        <?php if (!empty($theme_options['social_linkedin'])): ?>
+                            <li><a href="<?= htmlspecialchars($theme_options['social_linkedin']) ?>" target="_blank" class="text-gray-400 hover:text-white"><i class="fab fa-linkedin mr-2"></i>LinkedIn</a></li>
+                        <?php endif; ?>
                     </ul>
                 </div>
                 <div>
@@ -1151,7 +1293,7 @@ function getPostImages($slug) {
                 </div>
             </div>
             <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400 footer-copyright">
-                <p>© <script type="text/javascript">var year = new Date();document.write(year.getFullYear());</script> MiniB by <a href="https://bit.ly/colenikol" target="_blank"><u>ColeNikol</u></a>. If you like MiniB please <a href="https://cwallet.com/t/JZWJW87H" target="_blank"><u>support</u></a> my next project</p>
+                <p><?= htmlspecialchars($theme_options['footer_text'] ?? '© ' . date('Y') . ' MiniB. All rights reserved.') ?></p>
             </div>
         </div>
     </footer>
@@ -1164,6 +1306,199 @@ function getPostImages($slug) {
     <!-- Add placeholders for carousel and posts -->
     <div id="carousel-placeholder" style="display:none;"></div>
     <div id="posts-placeholder" style="display:none;"></div>
+
+    <!-- Theme Customization Modal -->
+    <div id="themeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-screen overflow-y-auto">
+            <div class="border-b p-4 flex justify-between items-center sticky top-0 bg-white z-10">
+                <h3 class="text-xl font-bold">Theme Customization</h3>
+                <button onclick="closeThemeModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="post" enctype="multipart/form-data" class="p-6">
+                <input type="hidden" name="save_theme_customization" value="1">
+                
+                <!-- Tabs -->
+                <div class="flex border-b mb-6">
+                    <button type="button" onclick="switchTab('general')" class="tab-btn px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-semibold" data-tab="general">
+                        <i class="fas fa-cog mr-2"></i>General
+                    </button>
+                    <button type="button" onclick="switchTab('colors')" class="tab-btn px-4 py-2 text-gray-600 hover:text-gray-800" data-tab="colors">
+                        <i class="fas fa-palette mr-2"></i>Colors
+                    </button>
+                    <button type="button" onclick="switchTab('hero')" class="tab-btn px-4 py-2 text-gray-600 hover:text-gray-800" data-tab="hero">
+                        <i class="fas fa-star mr-2"></i>Hero Section
+                    </button>
+                    <button type="button" onclick="switchTab('media')" class="tab-btn px-4 py-2 text-gray-600 hover:text-gray-800" data-tab="media">
+                        <i class="fas fa-image mr-2"></i>Media
+                    </button>
+                    <button type="button" onclick="switchTab('social')" class="tab-btn px-4 py-2 text-gray-600 hover:text-gray-800" data-tab="social">
+                        <i class="fas fa-share-alt mr-2"></i>Social
+                    </button>
+                </div>
+
+                <!-- General Tab -->
+                <div id="generalTab" class="tab-content">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Site Name</label>
+                            <input type="text" name="site_name" value="<?= htmlspecialchars($theme_options['site_name'] ?? 'MiniB') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Site Title</label>
+                            <input type="text" name="site_title" value="<?= htmlspecialchars($theme_options['site_title'] ?? 'MiniB - Minimal Blog') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 mb-2">Site Description</label>
+                            <textarea name="site_description" rows="3" 
+                                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"><?= htmlspecialchars($theme_options['site_description'] ?? 'A minimalistic blog platform') ?></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 mb-2">Footer Text</label>
+                            <textarea name="footer_text" rows="2" 
+                                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"><?= htmlspecialchars($theme_options['footer_text'] ?? '© 2024 MiniB. All rights reserved.') ?></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Colors Tab -->
+                <div id="colorsTab" class="tab-content hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Primary Color</label>
+                            <div class="flex items-center space-x-3">
+                                <input type="color" name="primary_color" value="<?= htmlspecialchars($theme_options['primary_color'] ?? '#3B82F6') ?>" class="color-picker">
+                                <input type="text" name="primary_color_text" value="<?= htmlspecialchars($theme_options['primary_color'] ?? '#3B82F6') ?>" 
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                       placeholder="#3B82F6">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Secondary Color</label>
+                            <div class="flex items-center space-x-3">
+                                <input type="color" name="secondary_color" value="<?= htmlspecialchars($theme_options['secondary_color'] ?? '#1F2937') ?>" class="color-picker">
+                                <input type="text" name="secondary_color_text" value="<?= htmlspecialchars($theme_options['secondary_color'] ?? '#1F2937') ?>" 
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                       placeholder="#1F2937">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Accent Color</label>
+                            <div class="flex items-center space-x-3">
+                                <input type="color" name="accent_color" value="<?= htmlspecialchars($theme_options['accent_color'] ?? '#10B981') ?>" class="color-picker">
+                                <input type="text" name="accent_color_text" value="<?= htmlspecialchars($theme_options['accent_color'] ?? '#10B981') ?>" 
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                       placeholder="#10B981">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Text Color</label>
+                            <div class="flex items-center space-x-3">
+                                <input type="color" name="text_color" value="<?= htmlspecialchars($theme_options['text_color'] ?? '#374151') ?>" class="color-picker">
+                                <input type="text" name="text_color_text" value="<?= htmlspecialchars($theme_options['text_color'] ?? '#374151') ?>" 
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                       placeholder="#374151">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hero Section Tab -->
+                <div id="heroTab" class="tab-content hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Hero Title</label>
+                            <input type="text" name="hero_title" value="<?= htmlspecialchars($theme_options['hero_title'] ?? 'Welcome to MiniB') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Hero Subtitle</label>
+                            <input type="text" name="hero_subtitle" value="<?= htmlspecialchars($theme_options['hero_subtitle'] ?? 'A minimalistic blog platform') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Hero Button Text</label>
+                            <input type="text" name="hero_button_text" value="<?= htmlspecialchars($theme_options['hero_button_text'] ?? 'Get Started') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Hero Button URL</label>
+                            <input type="url" name="hero_button_url" value="<?= htmlspecialchars($theme_options['hero_button_url'] ?? '#posts') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Media Tab -->
+                <div id="mediaTab" class="tab-content hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Logo URL</label>
+                            <input type="text" name="logo_url" value="<?= htmlspecialchars($theme_options['logo_url'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="Enter logo URL">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Favicon URL</label>
+                            <input type="text" name="favicon_url" value="<?= htmlspecialchars($theme_options['favicon_url'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="Enter favicon URL">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 mb-2">Open Graph Image URL</label>
+                            <input type="text" name="og_image_url" value="<?= htmlspecialchars($theme_options['og_image_url'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="Enter Open Graph image URL">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Social Tab -->
+                <div id="socialTab" class="tab-content hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Facebook URL</label>
+                            <input type="url" name="social_facebook" value="<?= htmlspecialchars($theme_options['social_facebook'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="https://facebook.com/yourpage">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Twitter URL</label>
+                            <input type="url" name="social_twitter" value="<?= htmlspecialchars($theme_options['social_twitter'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="https://twitter.com/yourhandle">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Instagram URL</label>
+                            <input type="url" name="social_instagram" value="<?= htmlspecialchars($theme_options['social_instagram'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="https://instagram.com/yourhandle">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">LinkedIn URL</label>
+                            <input type="url" name="social_linkedin" value="<?= htmlspecialchars($theme_options['social_linkedin'] ?? '') ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="https://linkedin.com/in/yourprofile">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save Button -->
+                <div class="flex justify-end space-x-3 mt-6 pt-6 border-t">
+                    <button type="button" onclick="closeThemeModal()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
+                        Cancel
+                    </button>
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
         // Initialize Quill editor
@@ -1298,11 +1633,29 @@ function getPostImages($slug) {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Update view count in the UI if needed
+                    // Update view count in the UI
                     const viewElements = document.querySelectorAll(`[data-slug="${slug}"] .view-count`);
                     viewElements.forEach(el => {
                         el.textContent = data.views + ' views';
+                        // Add a brief highlight effect
+                        el.style.backgroundColor = '#10B981';
+                        setTimeout(() => {
+                            el.style.backgroundColor = '#2563EB';
+                        }, 500);
                     });
+                    
+                    // Also update any other view count elements that might exist
+                    const allViewElements = document.querySelectorAll('.view-count');
+                    allViewElements.forEach(el => {
+                        const parentCard = el.closest('[data-slug]');
+                        if (parentCard && parentCard.getAttribute('data-slug') === slug) {
+                            el.textContent = data.views + ' views';
+                        }
+                    });
+                    
+                    console.log('View count updated:', data.views);
+                } else {
+                    console.error('Failed to increment view count:', data.error);
                 }
             })
             .catch(error => {
@@ -1354,27 +1707,51 @@ function getPostImages($slug) {
         
         // Editor Modal
         const editorModal = document.getElementById('editorModal');
-        const newPostBtn = document.getElementById('newPostBtn');
+        const newPostBtnNav = document.getElementById('newPostBtnNav');
+        const newPostBtnDashboard = document.getElementById('newPostBtnDashboard');
         const closeEditor = document.getElementById('closeEditor');
         const editButtons = document.querySelectorAll('.edit-post');
         
-        if (newPostBtn) {
-            newPostBtn.addEventListener('click', () => {
-                document.getElementById('editorTitle').textContent = 'New Post';
-                document.getElementById('postTitle').value = '';
-                document.getElementById('slugInput').value = '';
-                document.getElementById('postSlug').value = '';
-                document.getElementById('postTags').value = '';
-                
-                // Initialize Quill editor
+        // Function to open new post editor
+        function openNewPostEditor() {
+            document.getElementById('editorTitle').textContent = 'New Post';
+            document.getElementById('postTitle').value = '';
+            document.getElementById('slugInput').value = '';
+            document.getElementById('postSlug').value = '';
+            document.getElementById('postTags').value = '';
+            
+            // Clear the editor content
+            if (quill) {
+                quill.root.innerHTML = '';
+            } else {
                 quill = initializeQuillEditor();
-                quill.setContents([]);
-                
-                document.getElementById('thumbnailPreview').innerHTML = '<i class="fas fa-image text-gray-400"></i>';
-                document.getElementById('thumbnailPreview').style.backgroundImage = '';
-                updatePostImagesDisplay('');
-                editorModal.classList.remove('hidden');
-            });
+            }
+            
+            // Clear thumbnail preview
+            const thumbnailPreview = document.getElementById('thumbnailPreview');
+            if (thumbnailPreview) {
+                thumbnailPreview.innerHTML = '<i class="fas fa-image text-gray-400"></i>';
+                thumbnailPreview.style.backgroundImage = '';
+                thumbnailPreview.classList.remove('thumbnail-preview');
+            }
+            
+            // Clear post images display
+            const postImagesList = document.getElementById('postImagesList');
+            if (postImagesList) {
+                postImagesList.innerHTML = '<div class="text-gray-500 text-sm">Save post first to see images</div>';
+            }
+            
+            // Show the editor modal
+            editorModal.classList.remove('hidden');
+        }
+        
+        // Add event listeners for both new post buttons
+        if (newPostBtnNav) {
+            newPostBtnNav.addEventListener('click', openNewPostEditor);
+        }
+        
+        if (newPostBtnDashboard) {
+            newPostBtnDashboard.addEventListener('click', openNewPostEditor);
         }
         
         if (closeEditor) {
@@ -1470,13 +1847,14 @@ function getPostImages($slug) {
         
         if (titleInput && slugInput) {
             titleInput.addEventListener('input', function() {
-                if (!slugInput.value) {
-                    const slug = this.value.toLowerCase()
-                        .replace(/[^\w\s]/g, '')
-                        .replace(/\s+/g, '-')
-                        .substring(0, 50);
-                    slugInput.value = slug;
-                }
+                // Always generate slug from title (not just when slug is empty)
+                const slug = this.value.toLowerCase()
+                    .replace(/[^\w\s-]/g, '') // Remove special characters except spaces and hyphens
+                    .replace(/\s+/g, '-') // Replace spaces with hyphens
+                    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+                    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+                    .substring(0, 50); // Limit to 50 characters
+                slugInput.value = slug;
             });
         }
         
@@ -1549,8 +1927,26 @@ function getPostImages($slug) {
                     document.getElementById('postContent').value = quill.root.innerHTML;
                 }
                 
+                // Ensure slug is generated from title if empty
+                const titleInput = document.getElementById('postTitle');
+                const slugInput = document.getElementById('slugInput');
+                const postSlugInput = document.getElementById('postSlug');
+                
+                if (titleInput && slugInput && !slugInput.value.trim()) {
+                    const slug = titleInput.value.toLowerCase()
+                        .replace(/[^\w\s-]/g, '')
+                        .replace(/\s+/g, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-+|-+$/g, '')
+                        .substring(0, 50);
+                    slugInput.value = slug;
+                    if (postSlugInput) {
+                        postSlugInput.value = slug;
+                    }
+                }
+                
                 // Get the current slug for refreshing images after save
-                const currentSlug = document.getElementById('postSlug').value || document.getElementById('slugInput').value;
+                const currentSlug = postSlugInput.value || slugInput.value;
                 
                 // Store the slug for later use
                 this.dataset.currentSlug = currentSlug;
@@ -2223,6 +2619,165 @@ ${content}`;
                 }
             });
         }
+
+        // Initialize hero background toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            toggleHeroBackground();
+            
+            // Debug: Check if all elements are loaded
+            console.log('Theme Manager initialized');
+            console.log('Color pickers found:', document.querySelectorAll('input[type="color"]').length);
+            console.log('File inputs found:', document.querySelectorAll('input[type="file"]').length);
+            console.log('Modal found:', document.getElementById('themeModal'));
+        });
+
+        // Theme Modal Functions
+        function openThemeModal() {
+            try {
+                const modal = document.getElementById('themeModal');
+                if (modal) {
+                    modal.classList.remove('hidden');
+                } else {
+                    console.error('Theme modal not found');
+                }
+            } catch (error) {
+                console.error('Error opening theme modal:', error);
+            }
+        }
+
+        function closeThemeModal() {
+            try {
+                const modal = document.getElementById('themeModal');
+                if (modal) {
+                    modal.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error closing theme modal:', error);
+            }
+        }
+
+        // Tab Functions
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            // Remove active state from all tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-600', 'font-semibold');
+                btn.classList.add('text-gray-600');
+            });
+            
+            // Show selected tab content
+            const selectedTab = document.getElementById(tabName + 'Tab');
+            if (selectedTab) {
+                selectedTab.classList.remove('hidden');
+            }
+            
+            // Add active state to selected tab button
+            const selectedBtn = event.target;
+            if (selectedBtn) {
+                selectedBtn.classList.add('border-b-2', 'border-blue-500', 'text-blue-600', 'font-semibold');
+                selectedBtn.classList.remove('text-gray-600');
+            }
+        }
+
+        // Color Picker Functions
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add event listeners to color pickers
+            document.querySelectorAll('input[type="color"]').forEach(colorPicker => {
+                colorPicker.addEventListener('change', function() {
+                    const textInput = this.parentElement.querySelector('input[type="text"]');
+                    if (textInput) {
+                        textInput.value = this.value;
+                    }
+                });
+            });
+
+            // Add event listeners to text inputs
+            document.querySelectorAll('input[type="text"]').forEach(textInput => {
+                if (textInput.parentElement && textInput.parentElement.querySelector('input[type="color"]')) {
+                    textInput.addEventListener('input', function() {
+                        const colorPicker = this.parentElement.querySelector('input[type="color"]');
+                        if (colorPicker && this.value.match(/^#[0-9A-F]{6}$/i)) {
+                            colorPicker.value = this.value;
+                        }
+                    });
+                }
+            });
+
+            // Handle theme form submission
+            const themeForm = document.querySelector('#themeModal form');
+            if (themeForm) {
+                themeForm.addEventListener('submit', function(e) {
+                    console.log('Theme form submission started');
+                    
+                    // Sync color picker values with text inputs before submission
+                    document.querySelectorAll('input[type="color"]').forEach(colorPicker => {
+                        const textInput = colorPicker.parentElement.querySelector('input[type="text"]');
+                        if (textInput) {
+                            textInput.value = colorPicker.value;
+                            console.log('Synced color picker:', colorPicker.name, '=', colorPicker.value);
+                        }
+                    });
+                    
+                    // Log form data before submission
+                    const formData = new FormData(this);
+                    console.log('Form data being submitted:');
+                    for (let [key, value] of formData.entries()) {
+                        console.log(key + ':', value);
+                    }
+                    
+                    // Show loading state
+                    const submitBtn = this.querySelector('button[type="submit"]');
+                    const originalText = submitBtn.innerHTML;
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+                    submitBtn.disabled = true;
+                    
+                    // Submit form and handle response
+                    fetch(window.location.href, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        console.log('Response status:', response.status);
+                        return response.text();
+                    })
+                    .then(html => {
+                        console.log('Response received:', html.substring(0, 500) + '...');
+                        
+                        // Check if there's a success message in the response
+                        if (html.includes('Theme customizations saved successfully')) {
+                            alert('Theme customizations saved successfully!');
+                            closeThemeModal();
+                            // Reload the page to see the changes
+                            window.location.reload();
+                        } else if (html.includes('Failed to save theme customizations')) {
+                            alert('Failed to save theme customizations. Please check file permissions.');
+                        } else {
+                            console.log('No specific success/failure message found, assuming success');
+                            alert('Theme customizations saved!');
+                            closeThemeModal();
+                            window.location.reload();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error saving theme customizations: ' + error.message);
+                    })
+                    .finally(() => {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalText;
+                    });
+                    
+                    // Prevent default form submission
+                    e.preventDefault();
+                });
+            } else {
+                console.error('Theme form not found');
+            }
+        });
     </script>
 </body>
 </html>

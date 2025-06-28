@@ -1,0 +1,352 @@
+/*
+Theme Name: Dark Theme
+Description: A sleek dark theme for MiniB blog with modern aesthetics
+Version: 1.0.0
+Author: MiniB Team
+Author URI: https://minib.com
+*/
+
+/* Import Tailwind CSS */
+@import url('https://cdn.tailwindcss.com');
+
+/* Import Font Awesome */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+
+/* Dark theme base styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    line-height: 1.6;
+    color: #e5e7eb;
+    background-color: #111827;
+}
+
+/* Override light mode classes for dark theme */
+.bg-white {
+    background-color: #1f2937;
+}
+
+.bg-gray-50 {
+    background-color: #111827;
+}
+
+.bg-gray-100 {
+    background-color: #1f2937;
+}
+
+.text-gray-900 {
+    color: #f9fafb;
+}
+
+.text-gray-800 {
+    color: #e5e7eb;
+}
+
+.text-gray-600 {
+    color: #d1d5db;
+}
+
+.text-gray-500 {
+    color: #9ca3af;
+}
+
+.border-gray-200 {
+    border-color: #374151;
+}
+
+.border-gray-300 {
+    border-color: #4b5563;
+}
+
+.shadow-sm {
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.shadow-lg {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+}
+
+/* Navigation */
+nav {
+    background-color: #1f2937;
+    border-bottom: 1px solid #374151;
+}
+
+/* Hero section */
+.bg-gradient-to-r.from-blue-600.to-indigo-700 {
+    background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+}
+
+/* Code blocks */
+.code-block {
+    border: 1px solid #374151;
+    background-color: #1f2937;
+}
+
+.code-header {
+    background-color: #374151;
+    border-bottom: 1px solid #4b5563;
+    color: #e5e7eb;
+}
+
+.code-block pre {
+    background-color: #0f172a;
+    color: #10b981;
+}
+
+/* Embed blocks */
+.embed-block {
+    border: 1px solid #374151;
+    background-color: #1f2937;
+}
+
+.embed-header {
+    background-color: #374151;
+    border-bottom: 1px solid #4b5563;
+    color: #e5e7eb;
+}
+
+.embed-content {
+    background-color: #1f2937;
+}
+
+/* Executable code */
+.executable-code {
+    border: 2px solid #6366f1;
+    background-color: #1f2937;
+}
+
+.executable-header {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-bottom: 2px solid #6366f1;
+}
+
+.executable-content {
+    background-color: #1f2937;
+    border-left: 4px solid #6366f1;
+}
+
+/* Search input */
+#searchInput {
+    background-color: #374151;
+    border-color: #4b5563;
+    color: #e5e7eb;
+}
+
+#searchInput:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+#searchInput::placeholder {
+    color: #9ca3af;
+}
+
+/* Post cards */
+.post-card {
+    background-color: #1f2937;
+    border: 1px solid #374151;
+}
+
+.post-card:hover {
+    border-color: #60a5fa;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #2563eb;
+}
+
+.btn-success {
+    background-color: #10b981;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #059669;
+}
+
+.btn-danger {
+    background-color: #ef4444;
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #dc2626;
+}
+
+/* Theme toggle */
+.theme-toggle:hover {
+    background-color: #374151;
+}
+
+/* Logo */
+.logo:hover {
+    color: #60a5fa;
+}
+
+/* Footer */
+footer {
+    background-color: #0f172a;
+    border-top: 1px solid #374151;
+}
+
+/* Newsletter section */
+.bg-blue-600 {
+    background-color: #1e40af;
+}
+
+/* Categories section */
+.bg-gray-50 {
+    background-color: #111827;
+}
+
+/* Dashboard cards */
+.bg-blue-50 {
+    background-color: #1e3a8a;
+}
+
+.bg-green-50 {
+    background-color: #065f46;
+}
+
+.bg-purple-50 {
+    background-color: #581c87;
+}
+
+.bg-orange-50 {
+    background-color: #92400e;
+}
+
+/* Text colors for dashboard */
+.text-blue-600 {
+    color: #60a5fa;
+}
+
+.text-blue-900 {
+    color: #dbeafe;
+}
+
+.text-green-600 {
+    color: #34d399;
+}
+
+.text-green-900 {
+    color: #d1fae5;
+}
+
+.text-purple-600 {
+    color: #a78bfa;
+}
+
+.text-purple-900 {
+    color: #ede9fe;
+}
+
+.text-orange-600 {
+    color: #fb923c;
+}
+
+.text-orange-900 {
+    color: #fed7aa;
+}
+
+/* Tag styles */
+.bg-blue-100 {
+    background-color: #1e3a8a;
+}
+
+.text-blue-800 {
+    color: #60a5fa;
+}
+
+.bg-green-100 {
+    background-color: #065f46;
+}
+
+.text-green-800 {
+    color: #34d399;
+}
+
+/* Prose styles for post content */
+.prose {
+    color: #e5e7eb;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+    color: #f9fafb;
+}
+
+.prose a {
+    color: #60a5fa;
+}
+
+.prose a:hover {
+    color: #93c5fd;
+}
+
+.prose blockquote {
+    border-left-color: #4b5563;
+    color: #d1d5db;
+}
+
+.prose code {
+    background-color: #374151;
+    color: #10b981;
+}
+
+.prose pre {
+    background-color: #0f172a;
+    color: #10b981;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 2rem;
+    }
+    
+    .hero-subtitle {
+        font-size: 1rem;
+    }
+    
+    .search-container {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 1rem;
+    }
+}
+
+/* Animation classes */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+} 

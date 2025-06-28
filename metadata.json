@@ -1,0 +1,74 @@
+{
+    "getting-started-php": {
+        "title": "Getting Started with PHP",
+        "slug": "getting-started-php",
+        "tags": [
+            "php",
+            "web",
+            "tutorial"
+        ],
+        "thumbnail": "",
+        "created_at": "2023-06-15 10:30:00",
+        "views": 42
+    },
+    "responsive-websites": {
+        "title": "Building Responsive Websites",
+        "slug": "responsive-websites",
+        "tags": [
+            "css",
+            "responsive",
+            "design"
+        ],
+        "thumbnail": "",
+        "created_at": "2023-06-12 14:20:00",
+        "views": 35
+    },
+    "javascript-fundamentals": {
+        "title": "JavaScript Fundamentals",
+        "slug": "javascript-fundamentals",
+        "tags": [
+            "javascript",
+            "web",
+            "tutorial"
+        ],
+        "thumbnail": "",
+        "created_at": "2023-06-10 09:15:00",
+        "views": 58
+    },
+    "introduction-databases": {
+        "title": "Introduction to Databases",
+        "slug": "introduction-databases",
+        "tags": [
+            "database",
+            "sql",
+            "backend"
+        ],
+        "thumbnail": "",
+        "created_at": "2023-06-08 11:45:00",
+        "views": 27
+    },
+    "creating-apis-php": {
+        "title": "Creating APIs with PHP",
+        "slug": "creating-apis-php",
+        "tags": [
+            "api",
+            "php",
+            "backend"
+        ],
+        "thumbnail": "",
+        "created_at": "2023-06-05 16:30:00",
+        "views": 39
+    },
+    "trt-tesr": {
+        "title": "TRT Tesr",
+        "slug": "trt-tesr",
+        "tags": [
+            "php",
+            "web",
+            "tutorial"
+        ],
+        "thumbnail": ".\/trt-tesr\/thumbnail.avif",
+        "created_at": "2025-06-28 11:52:25",
+        "views": 0
+    }
+}

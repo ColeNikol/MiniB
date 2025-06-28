@@ -1,0 +1,22 @@
+{
+    "site_name": "MiniB",
+    "site_title": "MiniB - Minimal Blog",
+    "site_description": "A minimalistic blog platform",
+    "primary_color": "#3B82F6",
+    "secondary_color": "#1F2937",
+    "accent_color": "#10B981",
+    "text_color": "#374151",
+    "background_color": "#FFFFFF",
+    "hero_title": "Welcome to MiniB",
+    "hero_subtitle": "A minimalistic blog platform",
+    "hero_button_text": "Get Started",
+    "hero_button_url": "#posts",
+    "logo_url": "",
+    "favicon_url": "",
+    "og_image_url": "",
+    "footer_text": "© 2024 MiniB. All rights reserved.",
+    "social_facebook": "",
+    "social_twitter": "",
+    "social_instagram": "",
+    "social_linkedin": ""
+} 
